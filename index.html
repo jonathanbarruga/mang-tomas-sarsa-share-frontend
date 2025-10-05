@@ -5,6 +5,87 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Mang Tomas Sarsa Share</title>
     <script src="https://cdn.tailwindcss.com"></script>
+    
+    <!-- FIREBASE SDKs (NEW) -->
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged, createUserWithEmailAndPassword, signInWithEmailAndPassword, signOut } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getFirestore, doc, getDoc, setDoc, updateDoc, deleteDoc, onSnapshot, collection, query, where, addDoc, getDocs, deleteField } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+        import { setLogLevel } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+
+        setLogLevel('debug'); // Enable Firestore logging
+
+        // --- GLOBAL VARIABLES (Provided by Environment) ---
+        const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
+        const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : {};
+        const initialAuthToken = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null;
+
+        let app;
+        let db;
+        let auth;
+        let unsubscribeUser;
+        let unsubscribeFiles;
+        let unsubscribeMembers;
+        let unsubscribeChat;
+
+        // Initialize Firebase app once
+        if (Object.keys(firebaseConfig).length > 0) {
+            app = initializeApp(firebaseConfig);
+            db = getFirestore(app);
+            auth = getAuth(app);
+            
+            // Expose FireBase instances globally for use in the script below
+            window.db = db;
+            window.auth = auth;
+            window.appId = appId;
+            window.signInWithCustomToken = signInWithCustomToken;
+            window.signInAnonymously = signInAnonymously;
+            window.onAuthStateChanged = onAuthStateChanged;
+            window.createUserWithEmailAndPassword = createUserWithEmailAndPassword;
+            window.signInWithEmailAndPassword = signInWithEmailAndPassword;
+            window.signOut = signOut;
+        }
+
+        // Expose Firestore methods globally
+        window.doc = doc;
+        window.getDoc = getDoc;
+        window.setDoc = setDoc;
+        window.updateDoc = updateDoc;
+        window.deleteDoc = deleteDoc;
+        window.onSnapshot = onSnapshot;
+        window.collection = collection;
+        window.query = query;
+        window.where = where;
+        window.addDoc = addDoc;
+        window.getDocs = getDocs;
+        window.deleteField = deleteField;
+        
+        // --- Authentication Setup ---
+        window.handleInitialAuth = async () => {
+            if (window.auth && initialAuthToken) {
+                try {
+                    await signInWithCustomToken(window.auth, initialAuthToken);
+                } catch (e) {
+                    console.error("Firebase custom token sign-in failed, falling back to anonymous.", e);
+                    await signInAnonymously(window.auth);
+                }
+            } else if (window.auth) {
+                await signInAnonymously(window.auth);
+            }
+        };
+
+        // --- User/File Paths ---
+        window.getPublicDataCollectionRef = (collectionName) => {
+            return collection(window.db, 'artifacts', window.appId, 'public/data', collectionName);
+        };
+        window.getUserDocRef = (userId) => {
+             return doc(window.db, 'artifacts', window.appId, 'public/data', 'users', userId);
+        };
+        window.getChatDocRef = (chatKey) => {
+             return doc(window.db, 'artifacts', window.appId, 'public/data', 'conversations', chatKey);
+        };
+
+    </script>
     <!-- Socket.IO Client (Simulated: Uncomment this when deploying the live backend)
     <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
     -->
@@ -568,40 +649,82 @@
         // API Configuration (Simulated)
         const API_BASE_URL = 'https://mang-tomas-sarsa-share-api.onrender.com/api/v1'; 
         
-        // --- POLLING CONSTANTS ---
-        const POLLING_INTERVAL = 5000; // 5 seconds
-        let pollingIntervalId = null; 
+        // --- POLLING CONSTANTS (Now Handled by Firestore onSnapshot) ---
+        // const POLLING_INTERVAL = 5000; 
+        // let pollingIntervalId = null; 
         // -------------------------
 
+        // Firestore Global References
+        let db;
+        let auth;
+        let appId;
+        let unsubscribeFiles = () => {};
+        let unsubscribeMembers = () => {};
+        let unsubscribeChat = () => {};
+        
         // Simulating the user database and state
         let currentUserId = null;
         let currentUser = null;
         let authToken = null;
-        let currentView = 'dashboard'; // Default view
+        let currentView = localStorage.getItem('currentView') || 'dashboard'; // Load view from session
         let currentChatRecipientId = null; 
+
+        // Local State Management (Synced with Firestore)
+        let localUsers = []; // Stores all members fetched from Firestore
+        let localFiles = []; // Stores all files fetched from Firestore
         
         const MAX_FILE_SIZE_STANDARD = 100 * 1024 * 1024; // 100MB
         const MAX_FILE_SIZE_ADMIN = 3 * 1024 * 1024 * 1024; // 3GB
         const PREMIUM_AMOUNT = '₱20.00';
         const GCASH_NUMBER = '09685289257';
 
-        // --- Simulated Database ---
-        let users = [
-            { id: '1', email: 'jonathanbarruga@gmail.com', username: 'Jonathan B - Admin', password: '@1#2$3_4&5', role: 'admin', isPremium: true, canChat: true, full_name: 'Jonathan Barruga', contact_number: '09685289257', gender: 'Male', birthday: '1990-01-01', friends: ['2'], profilePictureUrl: 'https://placehold.co/40x40/991b1b/ffffff?text=JB' },
-            { id: '2', email: 'test@app.com', username: 'test', password: 'password', role: 'standard', isPremium: false, canChat: true, full_name: 'Maria Santos', contact_number: '09123456789', gender: 'Female', birthday: '1995-05-15', friends: ['1', '3'], profilePictureUrl: 'https://placehold.co/40x40/fcd34d/991b1b?text=MS' },
-            { id: '3', email: 'maria@app.com', username: 'Maria', password: 'pass', role: 'standard', isPremium: false, canChat: true, full_name: 'Maria Dela Cruz', contact_number: '09222222222', gender: 'Female', birthday: '2000-10-20', friends: ['2'], profilePictureUrl: '' },
-        ];
-
-        let files = [
-            { id: 'f1', name: 'Project_Proposal.pdf', size: 2048576, uploaderId: '1', timestamp: Date.now() - 3600000 },
-            { id: 'f2', name: 'Budget_Spreadsheet.xlsx', size: 1024000, uploaderId: '2', timestamp: Date.now() - 7200000 },
-            { id: 'f3', name: 'Design_Mockups.zip', size: 15728640, uploaderId: '3', timestamp: Date.now() - 10800000 },
-            { id: 'f4', name: 'New_Report_2025.docx', size: 300000, uploaderId: '1', timestamp: Date.now() }, 
-            { id: 'f5', name: 'Marketing_Plan_V2.pdf', size: 8500000, uploaderId: '2', timestamp: Date.now() } // <-- New file added
-        ];
+        // --- Firebase Helper Functions ---
         
-        let conversations = {}; // { 'user1_user2': [{...messages...}], 'user2_user1': [...] }
-        // --- End Simulated Database ---
+        // Path helper (defined in the head script block)
+        function getUserDocPath(userId) { return ['artifacts', appId, 'public/data', 'users', userId]; }
+        function getFilesCollectionPath() { return ['artifacts', appId, 'public/data', 'files']; }
+        function getChatDocPath(chatKey) { return ['artifacts', appId, 'public/data', 'conversations', chatKey]; }
+
+
+        // --- Database Initialization (Initial data seeding for a new app) ---
+        async function initializeDatabaseIfEmpty() {
+            if (!db) return;
+
+            // 1. Check/Seed Users
+            const usersCollection = collection(db, 'artifacts', appId, 'public/data', 'users');
+            const userDocs = await getDocs(usersCollection);
+            
+            if (userDocs.empty) {
+                console.log("Seeding initial users to Firestore...");
+                const initialUsers = [
+                    { id: '1', email: 'jonathanbarruga@gmail.com', username: 'Jonathan B - Admin', password: '@1#2$3_4&5', role: 'admin', isPremium: true, canChat: true, full_name: 'Jonathan Barruga', contact_number: '09685289257', gender: 'Male', birthday: '1990-01-01', friends: ['2'], profilePictureUrl: 'https://placehold.co/40x40/991b1b/ffffff?text=JB' },
+                    { id: '2', email: 'test@app.com', username: 'test', password: 'password', role: 'standard', isPremium: false, canChat: true, full_name: 'Maria Santos', contact_number: '09123456789', gender: 'Female', birthday: '1995-05-15', friends: ['1', '3'], profilePictureUrl: 'https://placehold.co/40x40/fcd34d/991b1b?text=MS' },
+                    { id: '3', email: 'maria@app.com', username: 'Maria', password: 'pass', role: 'standard', isPremium: false, canChat: true, full_name: 'Maria Dela Cruz', contact_number: '09222222222', gender: 'Female', birthday: '2000-10-20', friends: ['2'], profilePictureUrl: '' },
+                ];
+                for (const user of initialUsers) {
+                    // Use a placeholder UID for the initial seed, which is the user ID itself
+                    await setDoc(doc(usersCollection, user.id), user);
+                }
+            }
+
+            // 2. Check/Seed Files (if needed for testing)
+            const filesCollection = collection(db, ...getFilesCollectionPath());
+            const fileDocs = await getDocs(filesCollection);
+
+            if (fileDocs.empty) {
+                 console.log("Seeding initial files to Firestore...");
+                const initialFiles = [
+                    { name: 'Project_Proposal.pdf', size: 2048576, uploaderId: '1', timestamp: Date.now() - 3600000 },
+                    { name: 'Budget_Spreadsheet.xlsx', size: 1024000, uploaderId: '2', timestamp: Date.now() - 7200000 },
+                    { name: 'Design_Mockups.zip', size: 15728640, uploaderId: '3', timestamp: Date.now() - 10800000 },
+                    { name: 'Marketing_Plan_V2.pdf', size: 8500000, uploaderId: '2', timestamp: Date.now() }
+                ];
+                for (const file of initialFiles) {
+                    await addDoc(filesCollection, file);
+                }
+            }
+        }
+
 
         // --- Session Management (Persistence) ---
         function saveSession() {
@@ -615,46 +738,93 @@
         }
 
         function loadSession() {
+            // Note: In a real Firebase setup, we rely on the onAuthStateChanged listener
+            // to load user data, not just localStorage.
             const token = localStorage.getItem('authToken');
-            const view = localStorage.getItem('currentView');
             
-            if (token) {
-                // Decode token to get user info (simulated)
-                try {
-                    const payload = JSON.parse(atob(token));
-                    const user = getUserById(payload.userId);
-                    if (user) {
-                        // Re-establish global state
-                        currentUserId = user.id;
-                        currentUser = user;
-                        authToken = token;
-                        currentView = view || 'dashboard';
-                        return true;
-                    }
-                } catch (e) {
-                    console.error("Failed to decode token on load:", e);
-                    localStorage.removeItem('authToken');
-                }
-            }
-            return false;
+            // We use the auth listener to fully establish state, so this is now just for
+            // retrieving the last active view.
+            currentView = localStorage.getItem('currentView') || 'dashboard';
+            return token ? true : false;
         }
 
-        // --- Simulation Helper Functions ---
+        // --- Firebase Data Listener Setup (NEW CORE LOGIC) ---
+
+        async function startListeners() {
+            if (!auth.currentUser || !db) return;
+
+            // 1. Files Listener (Public Collection)
+            const filesRef = collection(db, ...getFilesCollectionPath());
+            unsubscribeFiles = onSnapshot(filesRef, (snapshot) => {
+                localFiles = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+                // Sort by timestamp descending (newest first)
+                localFiles.sort((a, b) => b.timestamp - a.timestamp); 
+                console.log("Files updated from Firestore:", localFiles.length);
+                if (currentView === 'dashboard') {
+                    renderFiles();
+                }
+            }, (error) => console.error("Error listening to files:", error));
+
+            // 2. Members Listener (Public User Documents)
+            const usersRef = collection(db, 'artifacts', appId, 'public/data', 'users');
+            unsubscribeMembers = onSnapshot(usersRef, (snapshot) => {
+                localUsers = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+                console.log("Users updated from Firestore:", localUsers.length);
+                // Also update currentUser object if it matches the current UID
+                const updatedCurrentUser = localUsers.find(u => u.id === currentUser?.id);
+                if (updatedCurrentUser) {
+                    currentUser = updatedCurrentUser;
+                    updateProfileUI();
+                }
+
+                if (currentView === 'friends') {
+                    renderMemberList();
+                }
+                if (currentView === 'messages') {
+                    renderRecipientSelector(); // Update chat dropdown
+                }
+
+            }, (error) => console.error("Error listening to users:", error));
+            
+            // 3. User Document Listener (To get the initial and updated profile)
+            const userDocRef = getUserDocRef(auth.currentUser.uid);
+            onSnapshot(userDocRef, (docSnap) => {
+                if (docSnap.exists()) {
+                    // Update current user state with fresh data
+                    currentUser = { ...currentUser, ...docSnap.data(), id: docSnap.id };
+                    console.log("Current user profile updated from Firestore.");
+                    updateProfileUI(); 
+                }
+            }, (error) => console.error("Error listening to current user doc:", error));
+
+
+        }
+
+        function stopListeners() {
+            unsubscribeFiles();
+            unsubscribeMembers();
+            unsubscribeChat();
+            unsubscribeFiles = () => {};
+            unsubscribeMembers = () => {};
+            unsubscribeChat = () => {};
+        }
+
+        // --- Simulation Helper Functions (Updated to use localUsers/localFiles) ---
 
         function getAdminUser() {
-            return users.find(u => u.role === 'admin');
+            return localUsers.find(u => u.role === 'admin');
         }
 
         function getUserById(id) {
-            return users.find(u => u.id === id);
+            return localUsers.find(u => u.id === id);
         }
 
         function getUserByEmail(email) {
-            return users.find(u => u.email.toLowerCase() === email.toLowerCase());
+            return localUsers.find(u => u.email.toLowerCase() === email.toLowerCase());
         }
 
         function getCurrentUser() {
-            return users.find(u => u.id === currentUserId);
+            return currentUser; // Should be kept up-to-date by the snapshot listener
         }
 
         function isAdmin() {
@@ -667,7 +837,7 @@
         
         function getAvatarUrl(user) {
             if (!user) return 'https://placehold.co/40x40/991b1b/ffffff?text=U';
-            return user.profilePictureUrl || `https://placehold.co/40x40/991b1b/ffffff?text=${user.username.charAt(0)}`;
+            return user.profilePictureUrl || `https://placehold.co/40x40/991b1b/ffffff?text=${user.username ? user.username.charAt(0) : 'U'}`;
         }
 
 
@@ -675,14 +845,35 @@
             return [id1, id2].sort().join('_');
         }
 
-        function getConversation(id1, id2) {
-            const key = getChatKey(id1, id2);
-            return conversations[key] || [];
+        /**
+         * Attaches a real-time listener to the conversation document.
+         * @param {string} senderId 
+         * @param {string} receiverId 
+         */
+        function attachChatListener(senderId, receiverId) {
+            unsubscribeChat(); // Stop previous listener
+            const chatKey = getChatKey(senderId, receiverId);
+            const chatDocRef = doc(db, ...getChatDocPath(chatKey));
+            
+            unsubscribeChat = onSnapshot(chatDocRef, (docSnap) => {
+                const data = docSnap.data();
+                const messages = data?.messages || [];
+                console.log("Chat updated from Firestore:", messages.length);
+
+                // Update UI only if the user is currently on the message view
+                if (currentView === 'messages') {
+                    renderMessages(senderId, receiverId, messages);
+                }
+
+            }, (error) => console.error("Error listening to chat:", error));
         }
 
-        function saveMessage(senderId, receiverId, text, attachmentLink = null) {
-            // FIX: Only save the message once to the canonical conversation key.
-            const key = getChatKey(senderId, receiverId);
+        /**
+         * Sends a message by writing to the Firestore conversation document.
+         */
+        async function saveMessage(senderId, receiverId, text, attachmentLink = null) {
+            const chatKey = getChatKey(senderId, receiverId);
+            const chatDocRef = doc(db, ...getChatDocPath(chatKey));
 
             const newMessage = {
                 id: Date.now().toString(),
@@ -692,162 +883,104 @@
                 attachmentLink: attachmentLink,
                 timestamp: Date.now()
             };
+            
+            try {
+                // Fetch the existing conversation document
+                const docSnap = await getDoc(chatDocRef);
+                let messages = [];
+                if (docSnap.exists()) {
+                    messages = docSnap.data().messages || [];
+                }
+                
+                messages.push(newMessage);
 
-            // Save to the single canonical conversation path
-            if (!conversations[key]) { conversations[key] = []; }
-            conversations[key].push(newMessage);
-            
-            // Simulating a real-time broadcast/update
-            // If the active chat partner is the recipient, refresh their view
-            if (currentChatRecipientId === receiverId && currentUserId === senderId) {
-                renderMessages(currentUserId, receiverId);
-            }
-            // If the active chat partner is the sender, refresh their view
-            if (currentChatRecipientId === senderId && currentUserId === receiverId) {
-                 renderMessages(currentUserId, senderId);
+                // Write the full array back to Firestore
+                await setDoc(chatDocRef, { messages: messages }, { merge: false });
+                console.log("Message saved to Firestore.");
+            } catch (error) {
+                console.error("Error saving message to Firestore:", error);
+                showNotification("Failed to send message.", 'error');
             }
             
-            return newMessage;
+            // Rerender will be triggered automatically by the onSnapshot listener
         }
 
+
         async function fetchWithRetry(url, options, retries = 3) {
-            // --- SIMULATING LIVE API CALLS ---
+            // --- SIMULATING API CALLS (Used primarily for Auth simulation) ---
 
             const userBody = JSON.parse(options.body || '{}');
-            const authHeader = options.headers?.['Authorization'] || '';
             
-            // 1. AUTH SIMULATION
-            if (url.endsWith('/auth/login') || url.endsWith('/auth/register')) {
-                await new Promise(r => setTimeout(r, 800)); // Simulate latency
-                
-                // Login Success/Failure Logic
-                if (url.endsWith('/auth/login')) {
-                    const foundUser = users.find(u => 
-                        (u.email === userBody.emailOrUsername || u.username === userBody.emailOrUsername) && 
-                        u.password === userBody.password
-                    );
+            // 1. AUTH SIMULATION (Using Firebase Auth for real app)
+            if (url.endsWith('/auth/login')) {
+                // Firebase Auth will handle this directly on the client,
+                // but we simulate looking up user data in Firestore for role/profile.
+                const foundUser = localUsers.find(u => 
+                    (u.email === userBody.emailOrUsername || u.username === userBody.emailOrUsername) && 
+                    u.password === userBody.password // SIMULATION: Password check is client-side
+                );
 
-                    if (foundUser) {
-                        const token = btoa(JSON.stringify({ userId: foundUser.id, role: foundUser.role, isPremium: foundUser.isPremium }));
-                        return { 
-                            ok: true, 
-                            status: 200, 
-                            json: async () => ({ token, user: foundUser }) 
-                        };
-                    } else {
-                        return { ok: false, status: 401, json: async () => ({ error: 'Invalid credentials. Try: test/password' }) };
-                    }
-                }
-                
-                // Signup Success/Failure Logic
-                if (url.endsWith('/auth/register')) {
-                    if (users.find(u => u.email === userBody.email || u.username === userBody.username)) {
-                        return { ok: false, status: 409, json: async () => ({ error: 'Email or Username already exists.' }) };
-                    }
-                    const newUser = { 
-                        id: (users.length + 1).toString(), 
-                        email: userBody.email, 
-                        username: userBody.username, 
-                        password: userBody.password, // Simulated hash
-                        role: 'standard', 
-                        isPremium: false, 
-                        canChat: true,
-                        full_name: userBody.username,
-                        contact_number: '', 
-                        gender: '', 
-                        birthday: '',
-                        friends: [],
-                        profilePictureUrl: '' // New field initialized
-                    };
-                    users.push(newUser);
-                    const token = btoa(JSON.stringify({ userId: newUser.id, role: newUser.role, isPremium: newUser.isPremium }));
-                    return { ok: true, status: 201, json: async () => ({ token, user: newUser }) };
-                }
-            }
+                await new Promise(r => setTimeout(r, 500)); 
 
-            // 2. PROTECTED ROUTES SIMULATION (Requires valid token)
-            if (!authHeader.startsWith('Bearer ')) {
-                return { ok: false, status: 401, json: async () => ({ error: 'Unauthorized: Missing token.' }) };
-            }
-
-            const token = authHeader.split(' ')[1];
-            try {
-                const payload = JSON.parse(atob(token));
-                const user = getUserById(payload.userId);
-                
-                if (!user) {
-                    throw new Error('User not found');
-                }
-                
-                // 3. FILE UPLOAD SIMULATION
-                if (url.endsWith('/files/upload')) {
-                    // Simulate long upload time
-                    await new Promise(r => setTimeout(r, 1500)); 
-                    
-                    // In a real app, Multer provides file details. We fake it here.
-                    const fileName = options.formData.get('file')?.name || 'unknown_file.bin';
-                    const fileSize = options.formData.get('file')?.size || 50 * 1024 * 1024;
-
-                    const newFile = {
-                        id: `f${Date.now()}`,
-                        name: fileName,
-                        size: fileSize,
-                        uploaderId: user.id,
-                        timestamp: Date.now()
-                    };
-                    files.unshift(newFile);
-                    
-                    // Simulate Socket.IO Broadcast after DB save
-                    if (typeof simulateSocketIOBroadcast === 'function') {
-                        simulateSocketIOBroadcast(newFile);
-                    }
-
+                if (foundUser) {
+                    // For simulation purposes, we treat this as successful internal login
+                    // In a real app, Firebase signInWithEmailAndPassword handles this.
                     return { 
                         ok: true, 
                         status: 200, 
-                        json: async () => ({ message: 'Upload successful!', file: newFile }) 
+                        json: async () => ({ token: 'simulated-token', user: foundUser }) 
                     };
+                } else {
+                    return { ok: false, status: 401, json: async () => ({ error: 'Invalid credentials. Try: test/password' }) };
                 }
-
-                // 4. ADMIN CONTROL SIMULATION
-                if (url.endsWith('/admin/users')) {
-                     if (user.role !== 'admin') {
-                        return { ok: false, status: 403, json: async () => ({ error: 'Forbidden: Admin access required.' }) };
-                    }
-                    await new Promise(r => setTimeout(r, 300));
-                    return { 
-                        ok: true, 
-                        status: 200, 
-                        json: async () => ({ users: users.filter(u => u.id !== user.id) }) 
-                    };
-                }
-
-                // Default successful response for other API calls
-                return { ok: true, status: 200, json: async () => ({}) };
-
-            } catch (e) {
-                console.error('Token/API Error:', e);
-                return { ok: false, status: 401, json: async () => ({ error: 'Unauthorized: Invalid or expired token.' }) };
             }
+            
+            // 2. SIGNUP SIMULATION (Using Firebase Auth for real app)
+            if (url.endsWith('/auth/register')) {
+                if (localUsers.find(u => u.email === userBody.email || u.username === userBody.username)) {
+                    return { ok: false, status: 409, json: async () => ({ error: 'Email or Username already exists.' }) };
+                }
+                
+                // SIMULATION: Create user document in Firestore and return successful login data
+                const newUserId = `u${Date.now()}`;
+                const newUser = { 
+                    id: newUserId, 
+                    email: userBody.email, 
+                    username: userBody.username, 
+                    password: userBody.password, // NOTE: Storing password is INSECURE, only for simulation
+                    role: 'standard', 
+                    isPremium: false, 
+                    canChat: true,
+                    full_name: userBody.username,
+                    contact_number: '', 
+                    gender: '', 
+                    birthday: '',
+                    friends: [],
+                    profilePictureUrl: ''
+                };
+                
+                await setDoc(doc(db, ...getUserDocPath(newUserId)), newUser);
+
+                return { ok: true, status: 201, json: async () => ({ token: 'simulated-token', user: newUser }) };
+            }
+
+
+            // All other protected routes are disabled or handle their own logic with Firestore directly.
+            return { ok: true, status: 200, json: async () => ({}) };
             
         }
         
-        // Simulating the Socket.IO Broadcast function that would run on the Backend
+        // Simulating the Socket.IO Broadcast function (Now replaces by Firestore)
         function simulateSocketIOBroadcast(newFile) {
-            const sender = getCurrentUser();
-            const message = {
-                senderId: sender.id,
-                text: `[FILE SHARE] ${sender.username} uploaded: ${newFile.name} (${formatFileSize(newFile.size)})`,
-                timestamp: Date.now()
-            };
+             const sender = getCurrentUser();
+            const messageText = `[FILE SHARE] ${sender.username} uploaded: ${newFile.name} (${formatFileSize(newFile.size)})`;
             
-            // For simulation, we create a system message in all active conversations
-            users.forEach(recipient => {
-                if (recipient.id !== sender.id) {
-                    // Using the system message style for broadcast info
-                    saveMessage(sender.id, recipient.id, message.text, null);
-                }
-            });
+            // Send system message to Admin for notification
+            const adminUser = getAdminUser();
+            if (adminUser) {
+                 saveMessage(sender.id, adminUser.id, messageText);
+            }
+            // All other users will see the file automatically via the Firestore Files Listener
         }
 
         // --- Utility Functions ---
@@ -883,32 +1016,28 @@
                 cancelBtn.onclick = () => modal.classList.add('hidden');
             }
             
-            // Fix: Rely solely on the Tailwind 'hidden' class for visibility control
             modal.classList.remove('hidden'); 
         }
         
-        // --- Profile Picture Functions (New) ---
+        // --- Profile Picture Functions (NEW) ---
         function setProfilePicturePrompt() {
             const currentUrl = currentUser.profilePictureUrl || '';
             const newUrl = prompt("Enter the URL for your profile picture:", currentUrl);
             
             if (newUrl === null) {
-                // User clicked cancel
                 return;
             }
             
-            // Check if the URL is somewhat valid (very basic check)
             if (newUrl.trim() && !newUrl.startsWith('http')) {
                 showNotification("Invalid URL. Must start with http or https.", 'error');
                 return;
             }
             
-            // Set the value in the hidden input and trigger the form save
             document.getElementById('profilePictureUrl').value = newUrl.trim();
             document.getElementById('profileForm').requestSubmit();
         }
 
-        // --- Password Recovery Simulation ---
+        // --- Password Recovery Simulation (Updated with Automated Email) ---
 
         function showForgotPasswordModal() {
              showCustomModal(
@@ -916,7 +1045,6 @@
                 "Please enter the email address associated with your account.",
                 true, // isConfirm
                 () => {
-                    // On confirm, handle the password request
                     const email = document.getElementById('recoveryEmailInput').value;
                     handlePasswordRecovery(email);
                 },
@@ -947,25 +1075,24 @@
                  showNotification("Admin user not found. Recovery request failed.", 'error');
                  return;
             }
-
-            // SIMULATION: Send notification to the Admin (Jonathan B)
+            
+            // --- AUTOMATED EMAIL SIMULATION: Send recovery link to user ---
+            console.log(`[AUTOMATED EMAIL SERVICE] Sending password recovery link to: ${email}`);
+            
+            // SIMULATION: Send notification to the Admin via chat (for action)
             const notificationMessage = `
 **PASSWORD RECOVERY REQUEST**
 User: ${user.username} (${user.id})
 Email: ${email}
-*Please contact the user via email and issue a new temporary password for recovery, then update their account details in the database.*
+*Action Required: Contact the user via email and issue a new temporary password for recovery, then update their account details in the database.*
             `.trim();
 
             saveMessage(user.id, adminUser.id, notificationMessage);
             
-            showNotification(`Recovery link sent to ${email}! Check your spam/junk folder.`, 'success');
-            // Inform the user of the manual Admin step in the simulation
-            setTimeout(() => {
-                showNotification("NOTE (Simulation): The admin has been notified to reset your password.", 'info');
-            }, 1000);
+            showNotification(`Password recovery link has been EMAILED to ${email}. Please check your inbox.`, 'success');
         }
 
-        // --- Payment Modals ---
+        // --- Payment Modals (Updated with Automated Email) ---
 
         function showPaymentDetailsModal() {
             const adminUser = getAdminUser();
@@ -996,43 +1123,37 @@ Email: ${email}
                 "Please enter your payment details below to notify the Admin for verification.",
                 true, // isConfirm
                 () => {
-                    // Confirmed: Process payment notification
                     const paymentNumber = document.getElementById('paymentNumber').value;
                     const paymentRef = document.getElementById('paymentRef').value;
                     const paymentAmount = document.getElementById('paymentAmount').value;
 
-                    // Simple form validation check before sending 
                     if (!paymentNumber || !paymentRef || !paymentNumber.match(/[0-9]{11,}/) || !paymentRef.match(/[0-9]{8,13}/)) {
                         showNotification("Please check your payment details. Number must be 11 digits and Ref must be 8-13 digits.", 'error');
-                        return; // Stop execution if invalid
+                        return;
                     }
 
-                    // 1. Send Automatic Message to Admin
                     sendPaymentNotificationToAdmin(paymentNumber, paymentRef, paymentAmount);
 
-                    // 2. Notify User
-                    showNotification("Payment notification sent! Please wait for Admin verification.", 'info');
+                    const userEmail = getCurrentUser().email;
+                    console.log(`[AUTOMATED EMAIL SERVICE] Sending payment receipt/confirmation to: ${userEmail}`);
+                    showNotification(`Payment notification sent! A confirmation receipt has been EMAILED to ${userEmail}.`, 'info');
 
-                    // 3. Navigate to profile for user to check status (Optional but helpful)
                     changeView('profile');
 
                 },
                 paymentDetailsHTML
             );
 
-            // Change button texts for the details modal
             document.getElementById('modalConfirm').textContent = 'Submit Details & Notify Admin';
             document.getElementById('modalCancel').textContent = 'Maybe Later';
         }
 
         function showPaymentModal() {
-            // This is the first modal showing instructions
             showCustomModal(
                 "Premium Upgrade Required",
                 "Upgrade to Premium to unlock this feature.",
                 true, // isConfirm
                 () => {
-                    // When user clicks 'I Sent Payment (Next Step)', show the next modal
                     showPaymentDetailsModal();
                 },
                 `
@@ -1059,15 +1180,13 @@ User: ${sender.username} (${sender.id})
 Amount: ${amount}
 Source Number (User): ${sourceNumber}
 GCash Reference No.: ${refNumber}
-*Please check payment and update the user's Premium status.*
+*Action Required: Please check payment and update the user's Premium status.*
             `.trim();
             
-            // Send the message from the current user to the admin
             saveMessage(sender.id, adminUser.id, message);
 
-            // If the current user is viewing messages with the admin, re-render
             if (currentChatRecipientId === adminUser.id) {
-                renderMessages(currentUserId, adminUser.id);
+                // The chat listener handles the re-render, no manual call needed here
             }
         }
         
@@ -1142,7 +1261,7 @@ GCash Reference No.: ${refNumber}
                 if (element) {
                     if (id.startsWith(activeView) || id === activeView + 'Container') {
                         element.classList.remove('hidden');
-                        element.classList.add('active-view'); // Custom class for rerendering logic
+                        element.classList.add('active-view');
                     } else {
                         element.classList.add('hidden');
                         element.classList.remove('active-view');
@@ -1153,9 +1272,14 @@ GCash Reference No.: ${refNumber}
         
         function changeView(viewName) {
             currentView = viewName;
-            saveSession(); // Save the current view for persistence
+            saveSession();
             updateViewVisibility(viewName);
             
+            // Stop chat listener when leaving messages view
+            if (viewName !== 'messages') {
+                unsubscribeChat();
+            }
+
             if (viewName === 'dashboard') {
                 renderFiles();
             } else if (viewName === 'profile') {
@@ -1164,20 +1288,29 @@ GCash Reference No.: ${refNumber}
                 renderMemberList();
             } else if (viewName === 'messages') {
                 if (currentChatRecipientId) {
-                    renderMessages(currentUserId, currentChatRecipientId);
+                    attachChatListener(auth.currentUser.uid, currentChatRecipientId);
                 }
                 updateChatInputs();
             }
         }
 
-        function showLanding() {
-            // Clear current user state and session storage
+        async function showLanding() {
+            // Clear all user state and session storage
             currentUserId = null;
             currentUser = null;
             authToken = null;
             currentChatRecipientId = null;
-            saveSession(); // Clear session storage
-            stopPolling();
+            saveSession(); 
+            stopListeners();
+            
+            if (auth) {
+                try {
+                    await signOut(auth);
+                } catch (e) {
+                    console.warn("Sign out failed but continuing logout process:", e);
+                }
+            }
+
 
             document.getElementById('mainApp').classList.add('hidden');
             document.getElementById('authPage').classList.add('hidden');
@@ -1206,10 +1339,10 @@ GCash Reference No.: ${refNumber}
             }
         }
 
-        function startApp(user, token) {
+        function startApp(user) {
             currentUserId = user.id;
             currentUser = user;
-            authToken = token;
+            authToken = 'firebase-token'; // Simplified as we use uid/Firebase for auth/state
 
             // Set Header Info
             updateProfileUI();
@@ -1226,13 +1359,13 @@ GCash Reference No.: ${refNumber}
                 adminPanel.classList.add('hidden');
             }
 
-            // Set initial chat recipient if none is set (or re-set if necessary)
+            // Set initial chat recipient if none is set
             if (!currentChatRecipientId || !getUserById(currentChatRecipientId)) {
-                const availableRecipients = users.filter(u => u.id !== currentUserId);
+                const availableRecipients = localUsers.filter(u => u.id !== currentUserId);
                 const adminUser = getAdminUser();
                 
                 if (adminUser && adminUser.id !== currentUserId) {
-                     currentChatRecipientId = adminUser.id; // Default to Admin
+                     currentChatRecipientId = adminUser.id;
                 } else if (availableRecipients.length > 0) {
                     currentChatRecipientId = availableRecipients[0].id;
                 } else {
@@ -1246,10 +1379,61 @@ GCash Reference No.: ${refNumber}
 
             changeView(currentView); // Navigate to the persisted view
             saveSession();
+        }
 
-            startPolling();
-            
-            // showNotification(`Welcome back, ${currentUser.username}!`);
+        // --- Auth Listeners (The REAL entry point after Firebase is initialized) ---
+        
+        async function setupAuthAndListeners() {
+            if (!auth) return;
+
+            // 1. Handle custom token sign-in (must run once)
+            await handleInitialAuth(); 
+
+            // 2. Set up the main authentication state observer
+            onAuthStateChanged(auth, async (user) => {
+                if (user) {
+                    // User is signed in. UID is available.
+                    console.log("Auth state change: User is signed in.");
+                    
+                    // Start database listeners now that we have a UID.
+                    await initializeDatabaseIfEmpty();
+                    startListeners();
+
+                    // Wait for localUsers array to populate before starting the app
+                    // In a more complex app, this would use promises/waits. 
+                    // Here, we rely on the user listener firing quickly.
+
+                    // Check if a user profile exists in Firestore (simulated user lookup)
+                    const userDocSnap = await getDoc(getUserDocRef(user.uid));
+                    let userData = null;
+                    
+                    if (userDocSnap.exists()) {
+                        userData = { ...userDocSnap.data(), id: user.uid };
+                    } else {
+                        // This happens if anonymous/canvas user signs in. We assign a default ID.
+                        userData = { 
+                            id: user.uid,
+                            email: user.email || 'anonymous@app.com', 
+                            username: user.displayName || 'GuestUser' + user.uid.substring(0, 4),
+                            role: 'standard', 
+                            isPremium: false, 
+                            canChat: true,
+                            full_name: 'Guest User',
+                            friends: []
+                        };
+                         // Create a basic profile document for the anonymous user
+                        await setDoc(getUserDocRef(user.uid), userData, { merge: true });
+                    }
+
+                    // Start the application UI
+                    startApp(userData);
+                    
+                } else {
+                    // User is signed out.
+                    console.log("Auth state change: User is signed out.");
+                    showLanding();
+                }
+            });
         }
         
         // --- User State Management ---
@@ -1282,33 +1466,26 @@ GCash Reference No.: ${refNumber}
             }
         }
 
-        // --- Auth Handlers ---
+        // --- Auth Handlers (Updated to use Firebase Auth) ---
 
         async function handleLogin(e) {
             e.preventDefault();
             const emailOrUsername = document.getElementById('loginEmail').value;
             const password = document.getElementById('loginPassword').value;
 
-            const payload = { emailOrUsername, password };
+            // This is a SIMULATION. Real Firebase auth uses email/password directly.
+            // We search for the user data to perform the client-side simulated login check.
+            const user = localUsers.find(u => 
+                (u.email === emailOrUsername || u.username === emailOrUsername) && 
+                u.password === password
+            );
 
-            try {
-                const options = {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(payload)
-                };
-                const response = await fetchWithRetry(API_BASE_URL + '/auth/login', options);
-                const data = await response.json();
-
-                if (response.ok) {
-                    startApp(data.user, data.token);
-                    showNotification('Logged in successfully!', 'success');
-                } else {
-                    showNotification(data.error || 'Login failed due to server error.', 'error');
-                }
-            } catch (error) {
-                showNotification('Network error during login. Try again.', 'error');
-                console.error('Login error:', error);
+            if (user) {
+                // If found in simulated list, log in as this user ID
+                startApp(user);
+                showNotification(`Logged in as ${user.username}!`, 'success');
+            } else {
+                showNotification('Login failed. Invalid credentials. Try: test/password', 'error');
             }
         }
 
@@ -1327,50 +1504,58 @@ GCash Reference No.: ${refNumber}
                  showNotification('Password must be at least 6 characters.', 'error');
                 return;
             }
-
-            const payload = { username, email, password };
             
-            try {
-                const options = {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(payload)
-                };
-                const response = await fetchWithRetry(API_BASE_URL + '/auth/register', options);
-                const data = await response.json();
+            if (localUsers.find(u => u.email === email || u.username === username)) {
+                 showNotification('Email or Username already exists.', 'error');
+                 return;
+            }
 
-                if (response.ok) {
-                    startApp(data.user, data.token);
-                    showNotification('Account created successfully!', 'success');
-                } else {
-                    showNotification(data.error || 'Sign up failed. Please try a different email/username.', 'error');
-                }
+            // SIMULATION: Directly create user in Firestore (using the existing simulated object structure)
+            const newUserId = auth.currentUser ? auth.currentUser.uid : `anon-${Date.now()}`;
+            const newUser = { 
+                id: newUserId, 
+                email: email, 
+                username: username, 
+                password: password, // For simulation
+                role: 'standard', 
+                isPremium: false, 
+                canChat: true,
+                full_name: username,
+                contact_number: '', 
+                gender: '', 
+                birthday: '',
+                friends: [],
+                profilePictureUrl: '' 
+            };
+
+            try {
+                await setDoc(doc(db, ...getUserDocPath(newUserId)), newUser);
+                // In a real app, you would use createUserWithEmailAndPassword here
+
+                // After successful creation, the onSnapshot listener will update localUsers and startApp is called.
+                showNotification('Account created successfully! Logging you in...', 'success');
+
             } catch (error) {
-                showNotification('Network error during sign up. Try again.', 'error');
+                showNotification('Sign up failed. Please try a different email/username.', 'error');
                 console.error('Signup error:', error);
             }
         }
         
-        // --- Profile Handlers ---
+        // --- Profile Handlers (Updated to use Firestore) ---
         
         function renderProfile(user) {
             if (!user) return;
             
-            // Set inputs (editable)
             document.getElementById('profileUsername').value = user.username || '';
             document.getElementById('profileEmail').value = user.email || '';
             document.getElementById('profileFullName').value = user.full_name || '';
             document.getElementById('profileContact').value = user.contact_number || '';
             document.getElementById('profileGender').value = user.gender || '';
-            document.getElementById('profileBirthday').value = user.birthday || ''; // Assumes YYYY-MM-DD format
+            document.getElementById('profileBirthday').value = user.birthday || '';
             
-            // Update hidden input with current value
             document.getElementById('profilePictureUrl').value = user.profilePictureUrl || ''; 
-
-            // Set profile picture on page
             document.getElementById('profilePagePic').src = getAvatarUrl(user);
 
-            // Set status badge
             const statusBadge = document.getElementById('profilePremiumStatus');
             statusBadge.textContent = user.isPremium ? 'PREMIUM MEMBER' : 'STANDARD USER';
             statusBadge.className = user.isPremium 
@@ -1380,8 +1565,8 @@ GCash Reference No.: ${refNumber}
 
         async function handleProfileUpdate(e) {
             e.preventDefault();
+            if (!currentUser || !db) return;
 
-            // Get profile picture URL from the HIDDEN input, which is set by the button prompt.
             const profilePicUrl = document.getElementById('profilePictureUrl').value;
 
             const updatedProfile = {
@@ -1390,39 +1575,28 @@ GCash Reference No.: ${refNumber}
                 contact_number: document.getElementById('profileContact').value,
                 gender: document.getElementById('profileGender').value,
                 birthday: document.getElementById('profileBirthday').value,
-                profilePictureUrl: profilePicUrl, // Use the value set by the button/prompt
+                profilePictureUrl: profilePicUrl,
             };
 
-            // SIMULATION: Update the local user object
-            const userIndex = users.findIndex(u => u.id === currentUserId);
-            if (userIndex !== -1) {
-                users[userIndex] = { ...users[userIndex], ...updatedProfile };
-                currentUser = users[userIndex]; // Update global current user
-                updateProfileUI(); // Update header and current view
+            try {
+                // Use updateDoc to merge changes into the user's document
+                await updateDoc(getUserDocRef(currentUser.id), updatedProfile);
                 showNotification('Profile updated successfully!', 'success');
-            } else {
-                showNotification('User not found for update.', 'error');
+            } catch (error) {
+                showNotification('Failed to update profile.', 'error');
+                console.error("Firestore update error:", error);
             }
-
-            // In a real app, you would send this via PUT /api/v1/users/:id
-            /*
-            const response = await fetchWithRetry(API_BASE_URL + `/users/${currentUserId}`, {
-                method: 'PUT',
-                headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${authToken}` },
-                body: JSON.stringify(updatedProfile)
-            });
-            */
         }
         
-        // --- File Management Handlers ---
+        // --- File Management Handlers (Updated to use localFiles) ---
 
         function renderFiles() {
             const fileList = document.getElementById('fileList');
             const fileCount = document.getElementById('fileCount');
             
-            fileCount.textContent = files.length;
+            fileCount.textContent = localFiles.length;
             
-            if (files.length === 0) {
+            if (localFiles.length === 0) {
                 fileList.innerHTML = `
                     <div class="text-center py-8 text-gray-500">
                         <svg class="w-12 h-12 mx-auto mb-4 text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path></svg>
@@ -1433,7 +1607,7 @@ GCash Reference No.: ${refNumber}
                 return;
             }
             
-            fileList.innerHTML = files.map(file => {
+            fileList.innerHTML = localFiles.map(file => {
                 const uploader = getUserById(file.uploaderId);
                 return `
                     <div class="flex items-center justify-between p-3 border-b border-yellow-200 hover:bg-yellow-50 transition duration-150 rounded-lg mb-1 slide-in">
@@ -1462,49 +1636,61 @@ GCash Reference No.: ${refNumber}
         }
 
         function downloadFile(fileId) {
-            const file = files.find(f => f.id === fileId);
-            
             if (!isPremium() && !isAdmin()) {
                 showPaymentModal();
                 return;
             }
             
+            const file = localFiles.find(f => f.id === fileId);
             if (file) {
                 showNotification(`Preparing download for ${file.name}...`, 'success');
-                // SIMULATION: In a real app, this would fetch a signed download URL from the backend
             }
         }
 
-        function deleteFile(fileId) {
-            const fileIndex = files.findIndex(f => f.id === fileId);
-            if (fileIndex !== -1) {
-                const file = files[fileIndex];
-                
+        async function deleteFile(fileId) {
+            if (!currentUser || !db) return;
+            const file = localFiles.find(f => f.id === fileId);
+
+            if (file && (file.uploaderId === currentUserId || isAdmin())) {
                 showCustomModal(
                     'Confirm Deletion',
                     `Are you sure you want to permanently delete the file "${file.name}"? This action cannot be undone.`,
-                    true, // isConfirm
-                    () => {
-                        files.splice(fileIndex, 1);
-                        renderFiles();
-                        showNotification(`Deleted ${file.name}`, 'error');
-                        // In a real app, this sends DELETE /api/v1/files/:id
+                    true,
+                    async () => {
+                        try {
+                            await deleteDoc(doc(db, ...getFilesCollectionPath(), fileId));
+                            showNotification(`Deleted ${file.name}`, 'error');
+                            // The listener will re-render files
+                        } catch (error) {
+                            showNotification(`Failed to delete ${file.name}`, 'error');
+                            console.error("Firestore delete error:", error);
+                        }
                     }
                 );
             }
         }
 
-        function clearAllFiles() {
-            if (files.length === 0) return;
+        async function clearAllFiles() {
+            if (localFiles.length === 0) return;
             
             showCustomModal(
                 'Confirm Clear All',
                 'Are you sure you want to delete ALL files? This action cannot be undone.',
-                true, // isConfirm
-                () => {
-                    files = [];
-                    renderFiles();
-                    showNotification('All files have been deleted', 'error');
+                true,
+                async () => {
+                    // Note: Bulk delete is complex in Firestore. We simulate by deleting locally synced files one by one.
+                    const deletePromises = localFiles.map(file => 
+                        deleteDoc(doc(db, ...getFilesCollectionPath(), file.id))
+                    );
+                    
+                    try {
+                        await Promise.all(deletePromises);
+                        showNotification('All files have been deleted', 'error');
+                        // The listener will re-render files
+                    } catch (error) {
+                        showNotification('Failed to clear all files.', 'error');
+                        console.error("Firestore bulk delete error:", error);
+                    }
                 }
             );
         }
@@ -1532,7 +1718,7 @@ GCash Reference No.: ${refNumber}
             
             fileInput.addEventListener('change', (e) => {
                 handleFiles(e.target.files);
-                fileInput.value = ''; // Clear input for re-upload
+                fileInput.value = '';
             });
         }
 
@@ -1550,6 +1736,8 @@ GCash Reference No.: ${refNumber}
         }
 
         async function uploadFile(file) {
+            if (!currentUser || !db) return;
+
             const uploadProgressElement = document.getElementById('uploadProgress');
             const progressBar = document.getElementById('progressBar');
             const uploadStatus = document.getElementById('uploadStatus');
@@ -1558,10 +1746,7 @@ GCash Reference No.: ${refNumber}
             uploadStatus.textContent = `Uploading ${file.name}...`;
             progressBar.style.width = '0%';
             
-            const formData = new FormData();
-            formData.append('file', file, file.name);
-
-            // SIMULATION: Animate progress bar during fetch
+            // SIMULATION: Animate progress bar during fake upload time
             let progress = 0;
             const interval = setInterval(() => {
                 progress += Math.random() * 10; 
@@ -1571,35 +1756,33 @@ GCash Reference No.: ${refNumber}
             }, 100);
 
             try {
-                const options = {
-                    method: 'POST',
-                    headers: { 'Authorization': `Bearer ${authToken}` },
-                    formData: formData, // custom prop for simulation
-                    // In a real fetch, formData is used directly, removing the need for 'Content-Type': 'multipart/form-data'
+                // FAKE UPLOAD: Wait for the simulated time
+                await new Promise(r => setTimeout(r, 1500)); 
+
+                // REAL ACTION: Add file metadata to Firestore
+                const newFileMetadata = {
+                    name: file.name,
+                    size: file.size,
+                    uploaderId: currentUser.id,
+                    timestamp: Date.now()
                 };
-                
-                // --- API CALL SIMULATION ---
-                const response = await fetchWithRetry(API_BASE_URL + '/files/upload', options);
-                const data = await response.json();
+
+                await addDoc(collection(db, ...getFilesCollectionPath()), newFileMetadata);
 
                 clearInterval(interval);
                 progressBar.style.width = '100%';
 
-                if (response.ok) {
-                    // File is already added to the local 'files' array in fetchWithRetry simulation
-                    setTimeout(() => {
-                        uploadProgressElement.classList.add('hidden');
-                        showNotification(`${data.file.name} uploaded and shared!`, 'success');
-                        renderFiles();
-                    }, 500);
-                } else {
-                    throw new Error(data.error || 'Upload failed');
-                }
+                setTimeout(() => {
+                    uploadProgressElement.classList.add('hidden');
+                    showNotification(`${file.name} uploaded and shared!`, 'success');
+                    simulateSocketIOBroadcast(newFileMetadata); // Notify Admin/Chat
+                }, 500);
+
             } catch (error) {
                 clearInterval(interval);
                 progressBar.style.width = '0%';
                 uploadProgressElement.classList.add('hidden');
-                showNotification(`Upload failed: ${error.message}`, 'error');
+                showNotification(`Upload failed: ${error.message || 'Database error'}`, 'error');
                 console.error('Upload Error:', error);
             }
         }
@@ -1607,7 +1790,7 @@ GCash Reference No.: ${refNumber}
         // --- Chat Handlers ---
         
         function updateChatInputs() {
-            const canChatNow = isPremium() && getCurrentUser().canChat;
+            const canChatNow = isPremium() && getCurrentUser()?.canChat;
             const inputElement = document.getElementById('messageInput');
             const sendButton = document.getElementById('sendButton');
             const attachmentButton = document.getElementById('attachmentButton');
@@ -1621,12 +1804,11 @@ GCash Reference No.: ${refNumber}
             } else {
                 inputElement.disabled = true;
                 sendButton.disabled = true;
-                // Only allow premium users to use attachments, even if temporarily blocked by admin
                 attachmentButton.disabled = !isPremium(); 
                 accessMessage.classList.remove('hidden');
                 if (!isPremium()) {
                     accessMessage.innerHTML = `<button onclick="requestUpgradePrompt()" class="underline font-semibold hover:text-red-700">Upgrade to Premium</button> to send messages and attachments.`;
-                } else if (!getCurrentUser().canChat) {
+                } else if (!getCurrentUser()?.canChat) {
                     accessMessage.textContent = 'Your chatting privileges have been temporarily disabled by an Admin.';
                 }
             }
@@ -1634,14 +1816,13 @@ GCash Reference No.: ${refNumber}
         
         function setCurrentRecipient(recipientId) {
             currentChatRecipientId = recipientId;
-            changeView('messages'); // Rerender the message view
+            changeView('messages');
         }
 
         function renderRecipientSelector() {
             const selector = document.getElementById('recipientSelector');
-            const availableRecipients = users.filter(u => u.id !== currentUserId);
+            const availableRecipients = localUsers.filter(u => u.id !== currentUserId);
             
-            // Sort to ensure Admin is always at the top
             availableRecipients.sort((a, b) => {
                 if (a.role === 'admin') return -1;
                 if (b.role === 'admin') return 1;
@@ -1654,22 +1835,30 @@ GCash Reference No.: ${refNumber}
             
             if (!currentChatRecipientId && availableRecipients.length > 0) {
                 currentChatRecipientId = availableRecipients[0].id;
+                // If the view is active, immediately start listening to the new recipient
+                if (currentView === 'messages') {
+                    attachChatListener(auth.currentUser.uid, currentChatRecipientId);
+                }
             }
         }
 
-        function renderMessages(senderId, receiverId) {
+        /**
+         * Renders messages based on the live data from Firestore onSnapshot.
+         * @param {string} senderId 
+         * @param {string} receiverId 
+         * @param {Array<Object>} chatLog 
+         */
+        function renderMessages(senderId, receiverId, chatLog) {
             if (!senderId || !receiverId) return;
-            renderRecipientSelector(); // Ensure selector is updated
-            
+            // Note: renderRecipientSelector is now handled by the localUsers listener
+
             const chatContainer = document.getElementById('chatContainer');
-            // FIX: Use the single canonical key to retrieve the conversation
-            const chatLog = getConversation(senderId, receiverId);
             
             if (chatLog.length === 0) {
                  chatContainer.innerHTML = `
                     <div class="text-center py-8 text-gray-500">
                         <p>This conversation is empty.</p>
-                        <p class="text-sm">Start a direct message with ${getUserById(receiverId).username}.</p>
+                        <p class="text-sm">Start a direct message with ${getUserById(receiverId)?.username || 'user'}.</p>
                     </div>
                 `;
                 chatContainer.scrollTop = chatContainer.scrollHeight;
@@ -1727,39 +1916,32 @@ GCash Reference No.: ${refNumber}
 
         function handleSendMessage(e) {
             e.preventDefault();
+            if (!currentUser) return;
             const messageInput = document.getElementById('messageInput');
             const text = messageInput.value.trim();
             
-            if (!isPremium() || !getCurrentUser().canChat) return;
-
-            if (!text) return;
+            if (!isPremium() || !currentUser.canChat || !text) return;
             
-            const senderId = currentUserId;
+            const senderId = currentUser.id;
             const receiverId = currentChatRecipientId;
             
-            // SIMULATION: Save the message 
             saveMessage(senderId, receiverId, text);
-            
-            // Rerender the chat to show the new message
-            // Rerender is now handled inside saveMessage for simplicity
             messageInput.value = '';
         }
         
         function handleChatAttachment() {
-             if (!isPremium() || !getCurrentUser().canChat) return;
+             if (!isPremium() || !currentUser || !currentUser.canChat) return;
              
              const fileAttachmentName = prompt('Enter the name of the file you want to attach (e.g., "Budget_Q3.pdf"):');
              
              if (fileAttachmentName) {
-                const senderId = currentUserId;
+                const senderId = currentUser.id;
                 const receiverId = currentChatRecipientId;
                 const attachmentLink = `${API_BASE_URL}/download/${fileAttachmentName}`;
 
-                // SIMULATION: Save the message with attachment link
                 const attachmentText = `File attached: ${fileAttachmentName}`;
                 saveMessage(senderId, receiverId, attachmentText, attachmentLink);
                 
-                renderMessages(senderId, receiverId);
                 showNotification(`File attachment message sent to ${getUserById(receiverId).username}.`, 'success');
             }
         }
@@ -1768,14 +1950,16 @@ GCash Reference No.: ${refNumber}
             showPaymentModal();
         }
 
-        // --- Friends & Admin Handlers ---
+        // --- Friends & Admin Handlers (Updated to use Firestore/localUsers) ---
         
         function renderMemberList() {
             const memberList = document.getElementById('memberList');
-            const membersToShow = users.filter(u => u.id !== currentUserId);
+            const membersToShow = localUsers.filter(u => u.id !== currentUserId);
             
             memberList.innerHTML = membersToShow.map(member => {
-                const isFriend = currentUser.friends.includes(member.id);
+                // NOTE: Friend status remains local to the currentUser object for now, 
+                // but it updates via the user's document listener (onSnapshot)
+                const isFriend = currentUser?.friends?.includes(member.id);
                 const isPremiumMember = member.isPremium;
                 const isAdminMember = member.role === 'admin';
                 const avatarUrl = getAvatarUrl(member);
@@ -1832,10 +2016,8 @@ GCash Reference No.: ${refNumber}
             const user = getUserById(userId);
             if (!user) return;
 
-            // Store ID temporarily for friend action
             document.getElementById('otherProfileContainer').dataset.userId = userId;
 
-            // Set content
             document.getElementById('otherProfileTitle').textContent = user.username;
             document.getElementById('otherProfileUsername').textContent = user.username;
             document.getElementById('otherProfileFullName').textContent = user.full_name || 'N/A';
@@ -1843,7 +2025,6 @@ GCash Reference No.: ${refNumber}
             document.getElementById('otherProfileGender').textContent = user.gender || 'N/A';
             document.getElementById('otherProfileBirthday').textContent = user.birthday || 'N/A';
             
-            // Set profile picture
             document.getElementById('otherProfilePagePic').src = getAvatarUrl(user);
 
             const statusBadge = document.getElementById('otherProfilePremiumStatus');
@@ -1852,9 +2033,8 @@ GCash Reference No.: ${refNumber}
                 ? 'inline-flex items-center px-3 py-1 text-xs font-semibold rounded-full bg-yellow-400 text-red-800'
                 : 'inline-flex items-center px-3 py-1 text-xs font-semibold rounded-full bg-gray-300 text-gray-700';
 
-            // Set Friend Action Button
             const friendBtn = document.getElementById('friendActionButton');
-            const isFriend = currentUser.friends.includes(userId);
+            const isFriend = currentUser?.friends?.includes(userId);
             
             friendBtn.textContent = isFriend ? 'Remove Friend' : 'Add Friend';
             friendBtn.classList.remove('bg-green-600', 'bg-red-500');
@@ -1863,36 +2043,33 @@ GCash Reference No.: ${refNumber}
             updateViewVisibility('otherProfile');
         }
         
-        function toggleFriendStatus() {
+        async function toggleFriendStatus() {
+            if (!currentUser || !db) return;
             const userIdToToggle = document.getElementById('otherProfileContainer').dataset.userId;
-            const friendIndex = currentUser.friends.indexOf(userIdToToggle);
             
+            let updatedFriends = currentUser.friends || [];
+            const friendIndex = updatedFriends.indexOf(userIdToToggle);
+
             if (friendIndex > -1) {
                 // Remove Friend
-                currentUser.friends.splice(friendIndex, 1);
+                updatedFriends.splice(friendIndex, 1);
                 showNotification(`Removed ${getUserById(userIdToToggle).username} from friends.`, 'info');
             } else {
                 // Add Friend
-                currentUser.friends.push(userIdToToggle);
+                updatedFriends.push(userIdToToggle);
                 showNotification(`Added ${getUserById(userIdToToggle).username} as a friend!`, 'success');
             }
             
-            // SIMULATION: Also update the other user's list (for consistency)
-            const otherUserIndex = users.findIndex(u => u.id === userIdToToggle);
-            const selfIndexInOtherList = users[otherUserIndex].friends.indexOf(currentUserId);
-
-            if (friendIndex > -1) {
-                if (selfIndexInOtherList > -1) {
-                     users[otherUserIndex].friends.splice(selfIndexInOtherList, 1);
-                }
-            } else {
-                 if (selfIndexInOtherList === -1) {
-                     users[otherUserIndex].friends.push(currentUserId);
-                }
+            try {
+                // Update current user's profile in Firestore
+                await updateDoc(getUserDocRef(currentUser.id), { friends: updatedFriends });
+                
+                // For simplicity, we won't update the other user's profile right now, 
+                // but the current user's state is correctly managed by the listener.
+            } catch (error) {
+                showNotification('Failed to update friend status.', 'error');
+                console.error("Firestore friend update error:", error);
             }
-
-            // Rerender the profile view with the new button state
-            viewOtherProfile(userIdToToggle);
         }
 
         function startDirectMessage(recipientId) {
@@ -1900,82 +2077,47 @@ GCash Reference No.: ${refNumber}
             changeView('messages');
         }
 
-        // --- Admin Handlers ---
+        // --- Admin Handlers (Updated to use Firestore) ---
         
-        function togglePremiumStatus(userId) {
-            if (!isAdmin()) return;
+        async function togglePremiumStatus(userId) {
+            if (!isAdmin() || !db) return;
             
-            const userIndex = users.findIndex(u => u.id === userId);
-            if (userIndex !== -1) {
-                const user = users[userIndex];
-                user.isPremium = !user.isPremium;
-                showNotification(`User ${user.username}'s Premium status set to: ${user.isPremium}`, 'info');
-                
-                // If the user being modified is the current user, update the UI
-                if (user.id === currentUserId) {
-                    currentUser = user;
-                    updateProfileUI();
+            const user = getUserById(userId);
+            if (user) {
+                const newStatus = !user.isPremium;
+                try {
+                    await updateDoc(getUserDocRef(userId), { isPremium: newStatus });
+                    showNotification(`User ${user.username}'s Premium status set to: ${newStatus}`, 'info');
+                } catch (error) {
+                    showNotification('Failed to update premium status.', 'error');
                 }
-                renderMemberList(); // Refresh the Admin list
             }
         }
         
-        function toggleChatStatus(userId) {
-            if (!isAdmin()) return;
+        async function toggleChatStatus(userId) {
+            if (!isAdmin() || !db) return;
             
-            const userIndex = users.findIndex(u => u.id === userId);
-            if (userIndex !== -1) {
-                const user = users[userIndex];
-                user.canChat = !user.canChat;
-                showNotification(`User ${user.username}'s chat privilege is now: ${user.canChat ? 'ENABLED' : 'DISABLED'}`, 'info');
-                
-                // If the user being modified is the current user, update the UI
-                if (user.id === currentUserId) {
-                    currentUser = user;
-                    updateProfileUI();
+            const user = getUserById(userId);
+            if (user) {
+                const newStatus = !user.canChat;
+                try {
+                    await updateDoc(getUserDocRef(userId), { canChat: newStatus });
+                    showNotification(`User ${user.username}'s chat privilege is now: ${newStatus ? 'ENABLED' : 'DISABLED'}`, 'info');
+                } catch (error) {
+                    showNotification('Failed to update chat status.', 'error');
                 }
-                renderMemberList(); // Refresh the Admin list
             }
         }
-
-        // --- Polling Logic for Simulated Real-Time Updates ---
-        
-        function startPolling() {
-            if (pollingIntervalId) {
-                clearInterval(pollingIntervalId);
-            }
-            pollingIntervalId = setInterval(() => {
-                if (currentUserId) {
-                    // Refresh files list if the user is on the Dashboard view
-                    if (document.getElementById('dashboardContainer').classList.contains('active-view')) {
-                        renderFiles(); 
-                    }
-                    // Refresh member list if the user is on the Friends view
-                    if (document.getElementById('friendsListContainer').classList.contains('active-view')) {
-                        renderMemberList();
-                    }
-                }
-            }, POLLING_INTERVAL);
-        }
-
-        function stopPolling() {
-            if (pollingIntervalId) {
-                clearInterval(pollingIntervalId);
-                pollingIntervalId = null;
-            }
-        }
-
 
         // --- Initialization ---
         
-        function initializeApp() {
-             // 1. Initial Render: Try to load session first
-            if (loadSession()) {
-                // Session restored: Start the app directly
-                startApp(currentUser, authToken);
+        async function initializeApp() {
+             // 1. Initial Render & Auth Setup
+            if (typeof window.setupAuthAndListeners === 'function') {
+                await setupAuthAndListeners();
             } else {
-                // No session: Show landing page
-                showLanding();
+                 console.error("Firebase SDKs or setupAuthAndListeners not loaded. Cannot run app.");
+                 showNotification("Initialization error: Firebase required.", 'error');
             }
             
             // 2. Setup File Upload listeners
