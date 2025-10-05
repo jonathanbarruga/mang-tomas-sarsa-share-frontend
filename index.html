@@ -1,0 +1,1681 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Mang Tomas Sarsa Share</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Socket.IO Client (Simulated: Uncomment this when deploying the live backend)
+    <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
+    -->
+    <style>
+        /* General Layout Fixes */
+        html, body {
+            min-height: 100%;
+            overflow-x: hidden; /* Prevent horizontal scroll */
+            overflow-y: auto; /* Ensure vertical scroll works */
+        }
+        
+        .file-upload-area {
+            border: 2px dashed #dc2626;
+            transition: all 0.3s ease;
+        }
+        
+        .file-upload-area.dragover {
+            border-color: #fbbf24;
+            background-color: #fef3c7;
+        }
+        
+        /* Chat Styling */
+        .chat-container {
+            height: 400px;
+            overflow-y: auto;
+            scroll-behavior: smooth;
+        }
+        
+        .chat-container::-webkit-scrollbar {
+            width: 8px;
+        }
+        
+        .chat-container::-webkit-scrollbar-track {
+            background: #fef3c7;
+        }
+        
+        .chat-container::-webkit-scrollbar-thumb {
+            background: #f59e0b; /* Yellow */
+            border-radius: 4px;
+        }
+        
+        /* Message bubble styles */
+        .chat-bubble {
+            max-width: 80%;
+            word-wrap: break-word;
+            padding: 10px 14px;
+            border-radius: 18px;
+        }
+
+        .chat-bubble.mine {
+            background-color: #dc2626; /* Red-600 */
+            color: white;
+            border-bottom-right-radius: 4px;
+        }
+
+        .chat-bubble.other {
+            background-color: #fef3c7; /* Yellow-100 */
+            color: #1f2937; /* Gray-800 */
+            border: 1px solid #fcd34d; /* Yellow-300 */
+            border-bottom-left-radius: 4px;
+        }
+        
+        /* Animation */
+        @keyframes slideIn {
+            from { opacity: 0; transform: translateY(20px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        
+        .slide-in {
+            animation: slideIn 0.3s ease-out;
+        }
+        
+        /* Notification */
+        .notification {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            z-index: 1000;
+            padding: 12px 20px;
+            background: #dc2626;
+            color: white;
+            border-radius: 8px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+            transform: translateX(400px);
+            transition: transform 0.3s ease;
+        }
+        
+        .notification.show {
+            transform: translateX(0);
+        }
+    </style>
+</head>
+<body class="bg-yellow-50 font-sans">
+    
+    <!-- Modals (Confirmation/Payment) -->
+    
+    <!-- Custom Modal for Confirmation/Alerts -->
+    <div id="confirmationModal" class="fixed inset-0 bg-gray-900 bg-opacity-75 hidden items-center justify-center z-50 p-4">
+        <div class="bg-white rounded-xl shadow-2xl max-w-sm w-full p-6 transform transition-all duration-300 scale-100">
+            <h3 id="modalTitle" class="text-xl font-bold text-red-700 mb-3">Confirm Action</h3>
+            <p id="modalMessage" class="text-gray-700 mb-6">Are you sure you want to proceed?</p>
+            <div id="modalContent" class="mb-6 text-sm bg-yellow-50 p-3 rounded-lg border border-yellow-200 hidden"></div>
+            <div class="flex justify-end space-x-3">
+                <button id="modalCancel" class="px-4 py-2 text-gray-600 rounded-lg hover:bg-gray-100 transition duration-200">Cancel</button>
+                <button id="modalConfirm" class="px-4 py-2 bg-red-600 text-white font-semibold rounded-lg shadow-md hover:bg-red-700 transition duration-200">Confirm</button>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Landing Page -->
+    <div id="landingPage" class="min-h-screen">
+        <!-- Hero Section -->
+        <div class="pt-20 pb-24 text-center bg-red-700 shadow-2xl rounded-b-[40px] md:rounded-b-[80px] px-4">
+            <h1 class="text-6xl md:text-7xl font-black text-white tracking-tighter mb-4">
+                Mang Tomas <span class="text-yellow-400">Sarsa Share</span>
+            </h1>
+            <p class="text-xl md:text-2xl text-red-200 mb-8 max-w-3xl mx-auto">
+                The all-in-one platform for secure file sharing and real-time team collaboration. <strong>Sarap espesyal araw-araw!</strong>
+            </p>
+            
+            <div class="flex flex-col sm:flex-row justify-center space-y-4 sm:space-y-0 sm:space-x-4">
+                <button 
+                    onclick="showAuth(false)"
+                    class="px-8 py-4 bg-yellow-400 text-red-800 text-xl font-bold rounded-full shadow-xl hover:bg-yellow-300 transition duration-300 transform hover:scale-105"
+                >
+                    Start Sharing Now (Sign Up)
+                </button>
+                <button 
+                    onclick="showAuth(true)"
+                    class="px-8 py-4 bg-red-500 text-white text-xl font-bold rounded-full shadow-lg border-2 border-red-300 hover:bg-red-600 transition duration-300"
+                >
+                    Log In
+                </button>
+            </div>
+        </div>
+        
+        <!-- Features Section (Simplified for brevity, content remains the same) -->
+        <div class="py-20 px-4">
+            <div class="max-w-6xl mx-auto">
+                <h2 class="text-4xl md:text-5xl font-bold text-center text-gray-800 mb-16">
+                    Why Choose <span class="text-red-600">Sarsa Share</span>?
+                </h2>
+                
+                <div class="grid md:grid-cols-2 lg:grid-cols-3 gap-8">
+                    <!-- Feature 1: Fast Uploads -->
+                    <div class="bg-white p-6 rounded-xl shadow-lg border border-red-100 transition-transform duration-300 hover:scale-[1.03]">
+                        <div class="p-3 bg-yellow-100 inline-flex rounded-full mb-4">
+                            <svg class="w-6 h-6 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M9 19l3 3m0 0l3-3m-3 3V10"></path></svg>
+                        </div>
+                        <h3 class="text-xl font-bold text-gray-800 mb-2">Lightning Fast Uploads</h3>
+                        <p class="text-gray-600">Upload files of any size with our optimized compression and transfer technology.</p>
+                    </div>
+                    
+                    <!-- Feature 2: Real-time Chat -->
+                    <div class="bg-white p-6 rounded-xl shadow-lg border border-red-100 transition-transform duration-300 hover:scale-[1.03]">
+                        <div class="p-3 bg-yellow-100 inline-flex rounded-full mb-4">
+                            <svg class="w-6 h-6 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"></path></svg>
+                        </div>
+                        <h3 class="text-xl font-bold text-gray-800 mb-2">Real-time Chat</h3>
+                        <p class="text-gray-600">Collaborate instantly with team members through our integrated messaging system.</p>
+                    </div>
+                    
+                    <!-- Feature 3: Security -->
+                    <div class="bg-white p-6 rounded-xl shadow-lg border border-red-100 transition-transform duration-300 hover:scale-[1.03]">
+                        <div class="p-3 bg-yellow-100 inline-flex rounded-full mb-4">
+                            <svg class="w-6 h-6 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"></path></svg>
+                        </div>
+                        <h3 class="text-xl font-bold text-gray-800 mb-2">Bank-level Security</h3>
+                        <p class="text-gray-600">Your files are protected with end-to-end encryption and secure cloud storage.</p>
+                    </div>
+                    
+                    <!-- Feature 4: Collaboration -->
+                    <div class="bg-white p-6 rounded-xl shadow-lg border border-red-100 transition-transform duration-300 hover:scale-[1.03]">
+                        <div class="p-3 bg-yellow-100 inline-flex rounded-full mb-4">
+                            <svg class="w-6 h-6 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z"></path></svg>
+                        </div>
+                        <h3 class="text-xl font-bold text-gray-800 mb-2">Team Collaboration</h3>
+                        <p class="text-gray-600">Work together seamlessly with shared workspaces and permission controls.</p>
+                    </div>
+                    
+                    <!-- Feature 5: Easy Sharing -->
+                    <div class="bg-white p-6 rounded-xl shadow-lg border border-red-100 transition-transform duration-300 hover:scale-[1.03]">
+                        <div class="p-3 bg-yellow-100 inline-flex rounded-full mb-4">
+                            <svg class="w-6 h-6 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.367 2.684 3 3 0 00-5.367-2.684z"></path></svg>
+                        </div>
+                        <h3 class="text-xl font-bold text-gray-800 mb-2">Easy Sharing</h3>
+                        <p class="text-gray-600">Share files with anyone using secure links, even if they don't have an account.</p>
+                    </div>
+                    
+                    <!-- Feature 6: Performance -->
+                    <div class="bg-white p-6 rounded-xl shadow-lg border border-red-100 transition-transform duration-300 hover:scale-[1.03]">
+                        <div class="p-3 bg-yellow-100 inline-flex rounded-full mb-4">
+                            <svg class="w-6 h-6 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"></path></svg>
+                        </div>
+                        <h3 class="text-xl font-bold text-gray-800 mb-2">Blazing Performance</h3>
+                        <p class="text-gray-600">Experience lightning-fast file transfers and instant synchronization across devices.</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Authentication Page -->
+    <div id="authPage" class="hidden min-h-screen flex items-center justify-center p-4">
+        <div class="w-full max-w-md bg-white rounded-xl shadow-2xl p-8 border-t-8 border-red-600">
+            <h2 id="authTitle" class="text-3xl font-bold text-gray-800 mb-6 text-center">Log In</h2>
+            
+            <!-- Login Form -->
+            <form id="loginForm" onsubmit="handleLogin(event)" class="space-y-4">
+                <div>
+                    <label for="loginEmail" class="block text-sm font-medium text-gray-700">Email or Username</label>
+                    <input type="text" id="loginEmail" required 
+                           class="mt-1 block w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-red-500 focus:border-red-500">
+                </div>
+                <div>
+                    <label for="loginPassword" class="block text-sm font-medium text-gray-700">Password</label>
+                    <input type="password" id="loginPassword" required minlength="6"
+                           class="mt-1 block w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-red-500 focus:border-red-500">
+                </div>
+                <button type="submit" 
+                        class="w-full px-4 py-2 bg-red-600 text-white font-semibold rounded-lg shadow-md hover:bg-red-700 transition duration-200">
+                    Log In
+                </button>
+                <p class="text-center text-sm text-gray-600">
+                    Don't have an account? 
+                    <button type="button" onclick="showAuth(false)" class="text-red-600 hover:text-red-800 font-medium">Sign Up</button>
+                </p>
+            </form>
+            
+            <!-- Sign Up Form -->
+            <form id="signupForm" onsubmit="handleSignup(event)" class="space-y-4 hidden">
+                <div>
+                    <label for="signupUsername" class="block text-sm font-medium text-gray-700">Username</label>
+                    <input type="text" id="signupUsername" required 
+                           class="mt-1 block w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-red-500 focus:border-red-500">
+                </div>
+                <div>
+                    <label for="signupEmail" class="block text-sm font-medium text-gray-700">Email</label>
+                    <input type="email" id="signupEmail" required 
+                           class="mt-1 block w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-red-500 focus:border-red-500">
+                </div>
+                <div>
+                    <label for="signupPassword" class="block text-sm font-medium text-gray-700">Password (min 6 chars)</label>
+                    <input type="password" id="signupPassword" required minlength="6"
+                           class="mt-1 block w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-red-500 focus:border-red-500">
+                </div>
+                <div>
+                    <label for="signupConfirmPassword" class="block text-sm font-medium text-gray-700">Confirm Password</label>
+                    <input type="password" id="signupConfirmPassword" required minlength="6"
+                           class="mt-1 block w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-red-500 focus:border-red-500">
+                </div>
+                <button type="submit" 
+                        class="w-full px-4 py-2 bg-yellow-600 text-red-900 font-semibold rounded-lg shadow-md hover:bg-yellow-700 transition duration-200">
+                    Sign Up
+                </button>
+                <p class="text-center text-sm text-gray-600">
+                    Already have an account? 
+                    <button type="button" onclick="showAuth(true)" class="text-red-600 hover:text-red-800 font-medium">Log In</button>
+                </p>
+            </form>
+        </div>
+    </div>
+
+    <!-- Main App Layout -->
+    <div id="mainApp" class="hidden min-h-screen bg-yellow-50">
+        <!-- Header -->
+        <header class="bg-red-700 text-white p-4 shadow-lg sticky top-0 z-10">
+            <div class="max-w-7xl mx-auto flex items-center justify-between flex-wrap">
+                <div class="flex items-center space-x-4">
+                    <h1 class="text-2xl font-bold">Mang Tomas <span class="text-yellow-400">Sarsa Share</span></h1>
+                    <span id="premiumBadge" class="px-3 py-1 rounded-full text-sm font-semibold transition duration-300"></span>
+                </div>
+                
+                <div class="flex items-center space-x-4 mt-2 sm:mt-0">
+                    <span class="text-red-200 hidden sm:inline">Welcome, <span id="userName" class="font-semibold">User</span>!</span>
+                    <button onclick="changeView('dashboard')" class="text-white hover:text-yellow-400 px-3 py-1 rounded-lg transition duration-200">Dashboard</button>
+                    <button onclick="changeView('profile')" class="text-white hover:text-yellow-400 px-3 py-1 rounded-lg transition duration-200">My Profile</button>
+                    <button onclick="changeView('friends')" class="text-white hover:text-yellow-400 px-3 py-1 rounded-lg transition duration-200">Friends</button>
+                    <button onclick="changeView('messages')" class="text-white hover:text-yellow-400 px-3 py-1 rounded-lg transition duration-200">Messages</button>
+                    <button onclick="showLanding()" class="bg-red-500 hover:bg-red-600 px-4 py-2 rounded-lg transition duration-200">
+                        Sign Out
+                    </button>
+                </div>
+            </div>
+        </header>
+
+        <div class="max-w-7xl mx-auto p-6">
+            <!-- Content Containers (Dynamically Hidden/Shown) -->
+            
+            <!-- 1. Dashboard Container (Downloadables & Upload) -->
+            <div id="dashboardContainer" class="space-y-6">
+                <div class="grid lg:grid-cols-2 gap-6">
+                    <!-- Upload Area -->
+                    <div class="bg-white rounded-xl shadow-lg p-6">
+                        <h2 class="text-2xl font-bold text-gray-800 mb-4 flex items-center">
+                            <svg class="w-6 h-6 mr-2 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M9 19l3 3m0 0l3-3m-3 3V10"></path></svg>
+                            Upload Files
+                        </h2>
+                        
+                        <div id="uploadArea" class="file-upload-area border-2 border-dashed border-red-300 rounded-xl p-8 text-center bg-yellow-50 hover:bg-yellow-100 transition duration-300 cursor-pointer">
+                            <svg class="w-12 h-12 text-red-400 mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M9 19l3 3m0 0l3-3m-3 3V10"></path></svg>
+                            <p class="text-lg font-semibold text-gray-700 mb-2">Drop files here or click to browse</p>
+                            <p id="fileLimitInfo" class="text-sm text-gray-500">Supports all file types • Max 100MB per file</p>
+                            <input type="file" id="fileInput" multiple class="hidden">
+                        </div>
+                        
+                        <div id="uploadProgress" class="hidden mt-4">
+                            <p id="uploadStatus" class="text-sm text-gray-600 mt-2">Uploading...</p>
+                            <div class="bg-gray-200 rounded-full h-3">
+                                <div id="progressBar" class="bg-red-600 h-3 rounded-full transition-all duration-300" style="width: 0%"></div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Downloadables List -->
+                    <div class="bg-white rounded-xl shadow-lg p-6">
+                        <div class="flex items-center justify-between mb-4">
+                            <h2 class="text-2xl font-bold text-gray-800 flex items-center">
+                                <svg class="w-6 h-6 mr-2 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path></svg>
+                                Downloadables (<span id="fileCount">0</span>)
+                            </h2>
+                            <button onclick="clearAllFiles()" class="text-red-500 hover:text-red-700 text-sm font-medium flex items-center">
+                                <svg class="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg>
+                                Clear All
+                            </button>
+                        </div>
+                        
+                        <div id="fileList" class="space-y-2">
+                            <!-- Files will be populated here -->
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 2. My Profile Container -->
+            <div id="profileContainer" class="hidden max-w-2xl mx-auto space-y-6">
+                <div class="bg-white rounded-xl shadow-lg p-8 border-t-8 border-red-600">
+                    <div class="flex items-center mb-6 border-b pb-4">
+                        <svg class="w-10 h-10 text-red-600 mr-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5.121 17.804A13.937 13.937 0 0112 16c2.5 0 4.847.655 6.879 1.804M15 10a3 3 0 11-6 0 3 3 0 016 0zm6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+                        <h2 class="text-3xl font-bold text-gray-800">My Profile</h2>
+                    </div>
+                    
+                    <form id="profileForm" onsubmit="handleProfileUpdate(event)" class="space-y-5">
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <!-- Username -->
+                            <div>
+                                <label for="profileUsername" class="block text-sm font-medium text-gray-700">Username</label>
+                                <input type="text" id="profileUsername" required class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-red-500 focus:border-red-500">
+                            </div>
+                            <!-- Full Name -->
+                            <div>
+                                <label for="profileFullName" class="block text-sm font-medium text-gray-700">Full Name</label>
+                                <input type="text" id="profileFullName" class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-red-500 focus:border-red-500">
+                            </div>
+                        </div>
+                        
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <!-- Email -->
+                            <div>
+                                <label for="profileEmail" class="block text-sm font-medium text-gray-700">Email (Read-only)</label>
+                                <input type="email" id="profileEmail" required readonly disabled class="mt-1 block w-full px-3 py-2 border border-gray-200 bg-gray-50 rounded-lg">
+                            </div>
+                            <!-- Contact Number -->
+                            <div>
+                                <label for="profileContact" class="block text-sm font-medium text-gray-700">Contact Number</label>
+                                <input type="tel" id="profileContact" class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-red-500 focus:border-red-500">
+                            </div>
+                        </div>
+
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <!-- Gender -->
+                            <div>
+                                <label for="profileGender" class="block text-sm font-medium text-gray-700">Gender</label>
+                                <select id="profileGender" class="mt-1 block w-full px-3 py-2 border border-gray-300 bg-white rounded-lg focus:ring-red-500 focus:border-red-500">
+                                    <option value="">Select Gender</option>
+                                    <option value="Male">Male</option>
+                                    <option value="Female">Female</option>
+                                    <option value="Other">Other</option>
+                                </select>
+                            </div>
+                            <!-- Birthday -->
+                            <div>
+                                <label for="profileBirthday" class="block text-sm font-medium text-gray-700">Birthday</label>
+                                <input type="date" id="profileBirthday" class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-red-500 focus:border-red-500">
+                            </div>
+                        </div>
+                        
+                        <!-- Membership Status -->
+                        <div class="pt-4 border-t border-gray-100">
+                            <p class="text-sm font-medium text-gray-700 mb-2">Membership Status</p>
+                            <span id="profilePremiumStatus" class="inline-flex items-center px-3 py-1 text-xs font-semibold rounded-full"></span>
+                        </div>
+
+                        <div class="pt-4">
+                            <button type="submit" class="px-6 py-2 bg-red-600 text-white font-semibold rounded-lg shadow-md hover:bg-red-700 transition duration-200">
+                                Save Profile
+                            </button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+            
+            <!-- 3. Friends List Container (Members and Admin Controls) -->
+            <div id="friendsListContainer" class="hidden max-w-4xl mx-auto space-y-6">
+                <h2 class="text-3xl font-bold text-gray-800 mb-6 flex items-center">
+                    <svg class="w-8 h-8 mr-2 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z"></path></svg>
+                    Sarsa Share Members
+                </h2>
+
+                <!-- Admin Controls Panel (Only visible to admin) -->
+                <div id="adminControlsPanel" class="hidden bg-red-100 p-4 rounded-xl shadow-inner border border-red-300 mb-6">
+                    <h3 class="text-xl font-bold text-red-800 mb-3 flex items-center">
+                        <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m5.618-4.204A1.99 1.99 0 0015 2H9a1.99 1.99 0 00-1.618.796M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+                        Admin Privilege Panel
+                    </h3>
+                    <p class="text-sm text-red-700 mb-4">Manage user permissions and premium status here.</p>
+                </div>
+                
+                <!-- Member List -->
+                <div id="memberList" class="bg-white rounded-xl shadow-lg p-6 space-y-3">
+                    <!-- Member cards populated here -->
+                </div>
+            </div>
+
+            <!-- 4. Messages Container (Direct Messaging Interface) -->
+            <div id="messagesContainer" class="hidden max-w-3xl mx-auto space-y-6">
+                <div class="bg-white rounded-xl shadow-lg p-6">
+                    <div class="flex items-center justify-between mb-4 border-b pb-4">
+                        <h2 class="text-2xl font-bold text-gray-800 flex items-center">
+                            <svg class="w-6 h-6 mr-2 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"></path></svg>
+                            Direct Messages
+                        </h2>
+                        <div class="flex items-center space-x-2">
+                            <label for="recipientSelector" class="text-sm font-medium text-gray-700">Chatting with:</label>
+                            <select id="recipientSelector" onchange="setCurrentRecipient(this.value)"
+                                class="px-3 py-1 border border-red-300 rounded-lg bg-yellow-50 focus:ring-red-500 focus:border-red-500">
+                                <!-- Options populated here -->
+                            </select>
+                        </div>
+                    </div>
+                    
+                    <div id="chatContainer" class="chat-container bg-gray-50 rounded-lg p-4 mb-4 border border-gray-200">
+                        <!-- Messages populated here -->
+                    </div>
+                    
+                    <form id="chatForm" onsubmit="handleSendMessage(event)" class="flex space-x-2">
+                        <button type="button" id="attachmentButton" onclick="handleChatAttachment()"
+                                class="flex-shrink-0 bg-yellow-500 text-red-900 px-3 py-2 rounded-lg hover:bg-yellow-600 transition duration-200 flex items-center disabled:opacity-50 disabled:cursor-not-allowed"
+                                title="Attach File (Premium Only)">
+                            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a3 3 0 104.243 4.243l6.586-6.414"></path></svg>
+                        </button>
+                        <input 
+                            type="text" 
+                            id="messageInput" 
+                            placeholder="Type your message..." 
+                            class="flex-1 px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-transparent disabled:bg-gray-100"
+                            disabled
+                        >
+                        <button 
+                            type="submit" 
+                            id="sendButton"
+                            class="bg-red-600 text-white px-4 py-2 rounded-lg hover:bg-red-700 transition duration-200 flex items-center disabled:opacity-50 disabled:cursor-not-allowed"
+                            disabled
+                        >
+                            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8"></path></svg>
+                        </button>
+                    </form>
+                    <p id="chatAccessMessage" class="text-sm text-red-500 mt-2 hidden text-center">
+                        <button onclick="requestUpgradePrompt()" class="underline font-semibold hover:text-red-700">Upgrade to Premium</button> to send messages and attachments.
+                    </p>
+                </div>
+            </div>
+            
+            <!-- 5. Other User Profile View -->
+            <div id="otherProfileContainer" class="hidden max-w-2xl mx-auto space-y-6">
+                <div class="bg-white rounded-xl shadow-lg p-8 border-t-8 border-yellow-600">
+                    <div class="flex items-center mb-6 border-b pb-4">
+                        <svg class="w-10 h-10 text-yellow-600 mr-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14c4.418 0 8 2.239 8 5v2H4v-2c0-2.761 3.582-5 8-5z"></path></svg>
+                        <h2 id="otherProfileTitle" class="text-3xl font-bold text-gray-800">User Profile</h2>
+                    </div>
+                    
+                    <div class="space-y-4">
+                        <div class="grid grid-cols-2 gap-4">
+                            <p class="text-sm font-medium text-gray-500">Username:</p>
+                            <p id="otherProfileUsername" class="text-sm font-semibold text-gray-800"></p>
+                        </div>
+                        <div class="grid grid-cols-2 gap-4">
+                            <p class="text-sm font-medium text-gray-500">Full Name:</p>
+                            <p id="otherProfileFullName" class="text-sm font-semibold text-gray-800"></p>
+                        </div>
+                        <div class="grid grid-cols-2 gap-4">
+                            <p class="text-sm font-medium text-gray-500">Contact No:</p>
+                            <p id="otherProfileContact" class="text-sm font-semibold text-gray-800"></p>
+                        </div>
+                        <div class="grid grid-cols-2 gap-4">
+                            <p class="text-sm font-medium text-gray-500">Gender:</p>
+                            <p id="otherProfileGender" class="text-sm font-semibold text-gray-800"></p>
+                        </div>
+                        <div class="grid grid-cols-2 gap-4">
+                            <p class="text-sm font-medium text-gray-500">Birthday:</p>
+                            <p id="otherProfileBirthday" class="text-sm font-semibold text-gray-800"></p>
+                        </div>
+                        <div class="grid grid-cols-2 gap-4">
+                            <p class="text-sm font-medium text-gray-500">Membership Status:</p>
+                            <span id="otherProfilePremiumStatus" class="inline-flex items-center px-3 py-1 text-xs font-semibold rounded-full"></span>
+                        </div>
+                    </div>
+                    
+                    <div class="pt-6 border-t border-gray-100 mt-6 flex justify-end">
+                        <button id="friendActionButton" onclick="toggleFriendStatus()" class="px-5 py-2 text-white font-semibold rounded-lg shadow-md transition duration-200">
+                            Add Friend
+                        </button>
+                    </div>
+                </div>
+            </div>
+            
+        </div>
+    </div>
+
+    <!-- Notification -->
+    <div id="notification" class="notification">
+        <span id="notificationText"></span>
+    </div>
+
+    <script>
+        // API Configuration (Simulated)
+        const API_BASE_URL = 'https://mang-tomas-sarsa-share-api.onrender.com/api/v1'; 
+        
+        // Simulating the user database and state
+        let currentUserId = null;
+        let currentUser = null;
+        let authToken = null;
+        let currentChatRecipientId = null; 
+        
+        const MAX_FILE_SIZE_STANDARD = 100 * 1024 * 1024; // 100MB
+        const MAX_FILE_SIZE_ADMIN = 3 * 1024 * 1024 * 1024; // 3GB
+
+        // --- Simulated Database ---
+        let users = [
+            { id: '1', email: 'jonathanbarruga@gmail.com', username: 'Jonathan B - Admin', password: '@1#2$3_4&5', role: 'admin', isPremium: true, canChat: true, full_name: 'Jonathan Barruga', contact_number: '09685289257', gender: 'Male', birthday: '1990-01-01', friends: ['2'] },
+            { id: '2', email: 'test@app.com', username: 'test', password: 'password', role: 'standard', isPremium: false, canChat: true, full_name: 'Maria Santos', contact_number: '09123456789', gender: 'Female', birthday: '1995-05-15', friends: ['1', '3'] },
+            { id: '3', email: 'maria@app.com', username: 'Maria', password: 'pass', role: 'standard', isPremium: false, canChat: true, full_name: 'Maria Dela Cruz', contact_number: '09222222222', gender: 'Female', birthday: '2000-10-20', friends: ['2'] },
+        ];
+
+        let files = [
+            { id: 'f1', name: 'Project_Proposal.pdf', size: 2048576, uploaderId: '1', timestamp: Date.now() - 3600000 },
+            { id: 'f2', name: 'Budget_Spreadsheet.xlsx', size: 1024000, uploaderId: '2', timestamp: Date.now() - 7200000 },
+            { id: 'f3', name: 'Design_Mockups.zip', size: 15728640, uploaderId: '3', timestamp: Date.now() - 10800000 }
+        ];
+        
+        let conversations = {}; // { 'user1_user2': [{...messages...}], 'user2_user1': [...] }
+        // --- End Simulated Database ---
+
+        // --- Simulation Helper Functions ---
+
+        function getUserById(id) {
+            return users.find(u => u.id === id);
+        }
+
+        function getCurrentUser() {
+            return users.find(u => u.id === currentUserId);
+        }
+
+        function isAdmin() {
+            return currentUser && currentUser.role === 'admin';
+        }
+
+        function isPremium() {
+            return currentUser && currentUser.isPremium;
+        }
+
+        function getChatKey(id1, id2) {
+            return [id1, id2].sort().join('_');
+        }
+
+        function getConversation(id1, id2) {
+            const key = getChatKey(id1, id2);
+            return conversations[key] || [];
+        }
+
+        function saveMessage(senderId, receiverId, text, attachmentLink = null) {
+            const key = getChatKey(senderId, receiverId);
+            const newMessage = {
+                id: Date.now().toString(),
+                senderId: senderId,
+                receiverId: receiverId,
+                text: text,
+                attachmentLink: attachmentLink,
+                timestamp: Date.now()
+            };
+
+            if (!conversations[key]) {
+                conversations[key] = [];
+            }
+            conversations[key].push(newMessage);
+            
+            // Simulating a real-time broadcast to the recipient
+            // If the recipient is currently viewing the chat, update their view
+            // In a live system, Socket.IO would handle this.
+            if (currentChatRecipientId === senderId && currentUserId === receiverId) {
+                 renderMessages(currentUserId, senderId);
+            }
+            
+            return newMessage;
+        }
+
+        async function fetchWithRetry(url, options, retries = 3) {
+            // --- SIMULATING LIVE API CALLS ---
+
+            // --- ADMIN CREDENTIALS FOR SIMULATION ---
+            const ADMIN_EMAIL = 'jonathanbarruga@gmail.com';
+            const ADMIN_PASS = '@1#2$3_4&5';
+            
+            const TEST_USER = 'test';
+            const TEST_PASS = 'password';
+
+            const userBody = JSON.parse(options.body || '{}');
+            const authHeader = options.headers['Authorization'] || '';
+            
+            // 1. AUTH SIMULATION
+            if (url.endsWith('/auth/login') || url.endsWith('/auth/register')) {
+                await new Promise(r => setTimeout(r, 800)); // Simulate latency
+                
+                // Login Success/Failure Logic
+                if (url.endsWith('/auth/login')) {
+                    const foundUser = users.find(u => 
+                        (u.email === userBody.emailOrUsername || u.username === userBody.emailOrUsername) && 
+                        u.password === userBody.password
+                    );
+
+                    if (foundUser) {
+                        const token = btoa(JSON.stringify({ userId: foundUser.id, role: foundUser.role, isPremium: foundUser.isPremium }));
+                        return { 
+                            ok: true, 
+                            status: 200, 
+                            json: async () => ({ token, user: foundUser }) 
+                        };
+                    } else {
+                        return { ok: false, status: 401, json: async () => ({ error: 'Invalid credentials. Try: test/password' }) };
+                    }
+                }
+                
+                // Signup Success/Failure Logic
+                if (url.endsWith('/auth/register')) {
+                    if (users.find(u => u.email === userBody.email || u.username === userBody.username)) {
+                        return { ok: false, status: 409, json: async () => ({ error: 'Email or Username already exists.' }) };
+                    }
+                    const newUser = { 
+                        id: (users.length + 1).toString(), 
+                        email: userBody.email, 
+                        username: userBody.username, 
+                        password: userBody.password, // Simulated hash
+                        role: 'standard', 
+                        isPremium: false, 
+                        canChat: true,
+                        full_name: userBody.username,
+                        contact_number: '', 
+                        gender: '', 
+                        birthday: '',
+                        friends: []
+                    };
+                    users.push(newUser);
+                    const token = btoa(JSON.stringify({ userId: newUser.id, role: newUser.role, isPremium: newUser.isPremium }));
+                    return { ok: true, status: 201, json: async () => ({ token, user: newUser }) };
+                }
+            }
+
+            // 2. PROTECTED ROUTES SIMULATION (Requires valid token)
+            if (!authHeader.startsWith('Bearer ')) {
+                return { ok: false, status: 401, json: async () => ({ error: 'Unauthorized: Missing token.' }) };
+            }
+
+            const token = authHeader.split(' ')[1];
+            try {
+                const payload = JSON.parse(atob(token));
+                const user = getUserById(payload.userId);
+                
+                if (!user) {
+                    throw new Error('User not found');
+                }
+                
+                // 3. FILE UPLOAD SIMULATION
+                if (url.endsWith('/files/upload')) {
+                    // Simulate long upload time
+                    await new Promise(r => setTimeout(r, 1500)); 
+                    
+                    // In a real app, Multer provides file details. We fake it here.
+                    const fileName = options.formData.get('file')?.name || 'unknown_file.bin';
+                    const fileSize = options.formData.get('file')?.size || 50 * 1024 * 1024;
+
+                    const newFile = {
+                        id: `f${Date.now()}`,
+                        name: fileName,
+                        size: fileSize,
+                        uploaderId: user.id,
+                        timestamp: Date.now()
+                    };
+                    files.unshift(newFile);
+                    
+                    // Simulate Socket.IO Broadcast after DB save
+                    if (typeof simulateSocketIOBroadcast === 'function') {
+                        simulateSocketIOBroadcast(newFile);
+                    }
+
+                    return { 
+                        ok: true, 
+                        status: 200, 
+                        json: async () => ({ message: 'Upload successful!', file: newFile }) 
+                    };
+                }
+
+                // 4. ADMIN CONTROL SIMULATION
+                if (url.endsWith('/admin/users')) {
+                     if (user.role !== 'admin') {
+                        return { ok: false, status: 403, json: async () => ({ error: 'Forbidden: Admin access required.' }) };
+                    }
+                    await new Promise(r => setTimeout(r, 300));
+                    return { 
+                        ok: true, 
+                        status: 200, 
+                        json: async () => ({ users: users.filter(u => u.id !== user.id) }) 
+                    };
+                }
+
+                // Default successful response for other API calls
+                return { ok: true, status: 200, json: async () => ({}) };
+
+            } catch (e) {
+                console.error('Token/API Error:', e);
+                return { ok: false, status: 401, json: async () => ({ error: 'Unauthorized: Invalid or expired token.' }) };
+            }
+            
+        }
+        
+        // Simulating the Socket.IO Broadcast function that would run on the Backend
+        function simulateSocketIOBroadcast(newFile) {
+            const sender = getCurrentUser();
+            const message = {
+                senderId: sender.id,
+                text: `[FILE SHARE] ${sender.username} uploaded: ${newFile.name} (${formatFileSize(newFile.size)})`,
+                timestamp: Date.now()
+            };
+            
+            // This global broadcast is simulated as a message to all users
+            // In a real app, this would be io.emit('file_uploaded', message);
+            
+            // For simulation, we create a system message in all active conversations
+            users.forEach(recipient => {
+                if (recipient.id !== sender.id) {
+                    saveMessage(sender.id, recipient.id, message.text, null);
+                }
+            });
+            
+            // If the current user is looking at the Messages view, rerender
+            if (currentUserId && document.getElementById('messagesContainer').classList.contains('active-view')) {
+                renderMessages(currentUserId, currentChatRecipientId);
+            }
+        }
+
+        // --- Utility Functions ---
+
+        function showCustomModal(title, message, isConfirm, onConfirm) {
+            const modal = document.getElementById('confirmationModal');
+            document.getElementById('modalTitle').textContent = title;
+            document.getElementById('modalMessage').textContent = message;
+            document.getElementById('modalContent').classList.add('hidden');
+            
+            const confirmBtn = document.getElementById('modalConfirm');
+            const cancelBtn = document.getElementById('modalCancel');
+
+            if (isConfirm) {
+                confirmBtn.classList.remove('hidden');
+                confirmBtn.onclick = () => {
+                    modal.classList.add('hidden');
+                    onConfirm();
+                };
+                cancelBtn.onclick = () => modal.classList.add('hidden');
+            } else {
+                confirmBtn.classList.add('hidden');
+                cancelBtn.textContent = 'Close';
+                cancelBtn.onclick = () => modal.classList.add('hidden');
+            }
+            
+            modal.classList.remove('hidden');
+            modal.style.display = 'flex';
+        }
+
+        function showPaymentModal(actionCallback) {
+            const modal = document.getElementById('confirmationModal');
+            document.getElementById('modalTitle').textContent = "Premium Upgrade Required";
+            document.getElementById('modalMessage').textContent = "Upgrade to Premium (₱20/month) to unlock this feature.";
+            
+            const content = document.getElementById('modalContent');
+            content.innerHTML = `
+                <p class="font-bold mb-2 text-red-700">Payment Instructions:</p>
+                <p>1. Send ₱20.00 via GCash.</p>
+                <p class="font-mono text-lg text-red-600">GCash: 09685289257</p>
+                <p>2. Wait for Admin verification.</p>
+            `;
+            content.classList.remove('hidden');
+
+            const confirmBtn = document.getElementById('modalConfirm');
+            const cancelBtn = document.getElementById('modalCancel');
+
+            confirmBtn.textContent = 'I Sent Payment (Wait for Verification)';
+            confirmBtn.classList.remove('hidden');
+
+            confirmBtn.onclick = () => {
+                modal.classList.add('hidden');
+                showNotification("Payment noted. Please wait for the Admin to update your status.", 'info');
+                // You would typically log this request to the database here
+            };
+            cancelBtn.textContent = 'Maybe Later';
+            cancelBtn.onclick = () => modal.classList.add('hidden');
+            
+            modal.classList.remove('hidden');
+            modal.style.display = 'flex';
+        }
+
+        function formatFileSize(bytes) {
+            if (bytes === 0) return '0 Bytes';
+            const k = 1024;
+            const sizes = ['Bytes', 'KB', 'MB', 'GB', 'TB'];
+            const i = Math.floor(Math.log(bytes) / Math.log(k));
+            return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+        }
+
+        function showNotification(message, type = 'success') {
+            const notification = document.getElementById('notification');
+            const notificationText = document.getElementById('notificationText');
+            
+            notificationText.textContent = message;
+            
+            notification.className = 'notification'; // Reset classes
+            if (type === 'success') {
+                notification.style.backgroundColor = '#10b981'; // Emerald Green
+            } else if (type === 'error') {
+                notification.style.backgroundColor = '#ef4444'; // Red
+            } else if (type === 'info') {
+                notification.style.backgroundColor = '#3b82f6'; // Blue
+            }
+            
+            notification.classList.add('show');
+            
+            setTimeout(() => {
+                notification.classList.remove('show');
+            }, 3000);
+        }
+
+        function getFileIcon(fileName) {
+            const extension = fileName.split('.').pop().toLowerCase();
+            let iconPath, color;
+
+            switch (extension) {
+                case 'pdf':
+                    iconPath = 'M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8l-6-6zM14 2v6h6M8 13h8M8 17h8';
+                    color = 'text-red-600';
+                    break;
+                case 'xlsx':
+                case 'csv':
+                    iconPath = 'M9 17H7m6 0h-2m2-4H7m6-4H7m8 4h-2m2-4h-2m2-4h-2M15 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V7.414A1 1 0 0018.586 7L15 3.414A1 1 0 0014.586 2H10';
+                    color = 'text-green-600';
+                    break;
+                case 'docx':
+                case 'doc':
+                case 'txt':
+                    iconPath = 'M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z';
+                    color = 'text-blue-600';
+                    break;
+                case 'zip':
+                case 'rar':
+                    iconPath = 'M8 12h8M8 16h8m-4-6V8M5 5h14a2 2 0 012 2v10a2 2 0 01-2 2H5a2 2 0 01-2-2V7a2 2 0 012-2z';
+                    color = 'text-gray-600';
+                    break;
+                default:
+                    iconPath = 'M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z';
+                    color = 'text-yellow-600';
+            }
+
+            return `<svg class="w-5 h-5 ${color} mr-3 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="${iconPath}"></path></svg>`;
+        }
+        
+        // --- Navigation Functions ---
+
+        function updateViewVisibility(activeView) {
+            ['dashboardContainer', 'profileContainer', 'friendsListContainer', 'messagesContainer', 'otherProfileContainer'].forEach(id => {
+                const element = document.getElementById(id);
+                if (element) {
+                    if (id.startsWith(activeView) || id === activeView + 'Container') {
+                        element.classList.remove('hidden');
+                        element.classList.add('active-view'); // Custom class for rerendering logic
+                    } else {
+                        element.classList.add('hidden');
+                        element.classList.remove('active-view');
+                    }
+                }
+            });
+        }
+        
+        function changeView(viewName) {
+            updateViewVisibility(viewName);
+            
+            if (viewName === 'dashboard') {
+                renderFiles();
+            } else if (viewName === 'profile') {
+                renderProfile(currentUser);
+            } else if (viewName === 'friends') {
+                renderMemberList();
+            } else if (viewName === 'messages') {
+                if (currentChatRecipientId) {
+                    renderMessages(currentUserId, currentChatRecipientId);
+                }
+                updateChatInputs();
+            }
+        }
+
+        function showLanding() {
+            // Clear current user state
+            currentUserId = null;
+            currentUser = null;
+            authToken = null;
+            currentChatRecipientId = null;
+            
+            document.getElementById('mainApp').classList.add('hidden');
+            document.getElementById('authPage').classList.add('hidden');
+            document.getElementById('landingPage').classList.remove('hidden');
+            
+            showNotification('You have been signed out.');
+        }
+
+        function showAuth(isLogin) {
+            document.getElementById('landingPage').classList.add('hidden');
+            document.getElementById('mainApp').classList.add('hidden');
+            document.getElementById('authPage').classList.remove('hidden');
+
+            const loginForm = document.getElementById('loginForm');
+            const signupForm = document.getElementById('signupForm');
+            const title = document.getElementById('authTitle');
+
+            if (isLogin) {
+                loginForm.classList.remove('hidden');
+                signupForm.classList.add('hidden');
+                title.textContent = 'Log In';
+            } else {
+                loginForm.classList.add('hidden');
+                signupForm.classList.remove('hidden');
+                title.textContent = 'Sign Up';
+            }
+        }
+
+        function startApp(user, token) {
+            currentUserId = user.id;
+            currentUser = user;
+            authToken = token;
+
+            // Set Header Info
+            document.getElementById('userName').textContent = currentUser.username;
+            
+            // Set File Limit Info
+            const limit = currentUser.role === 'admin' ? formatFileSize(MAX_FILE_SIZE_ADMIN) : formatFileSize(MAX_FILE_SIZE_STANDARD);
+            document.getElementById('fileLimitInfo').textContent = `Supports all file types • Max ${limit} per file`;
+
+            // Set Badge
+            const badge = document.getElementById('premiumBadge');
+            badge.textContent = currentUser.isPremium ? 'PREMIUM' : 'STANDARD';
+            badge.className = currentUser.isPremium 
+                ? 'px-3 py-1 rounded-full text-sm font-semibold transition duration-300 bg-yellow-400 text-red-800'
+                : 'px-3 py-1 rounded-full text-sm font-semibold transition duration-300 bg-gray-300 text-gray-700';
+
+            // Set Admin Controls Visibility
+            const adminPanel = document.getElementById('adminControlsPanel');
+            if (currentUser.role === 'admin') {
+                adminPanel.classList.remove('hidden');
+            } else {
+                adminPanel.classList.add('hidden');
+            }
+
+            // Set initial chat recipient to Admin (if not admin), or first user (if admin)
+            const availableRecipients = users.filter(u => u.id !== currentUserId);
+            if (availableRecipients.length > 0) {
+                currentChatRecipientId = availableRecipients[0].id;
+            } else {
+                currentChatRecipientId = null;
+            }
+
+            document.getElementById('landingPage').classList.add('hidden');
+            document.getElementById('authPage').classList.add('hidden');
+            document.getElementById('mainApp').classList.remove('hidden');
+
+            changeView('dashboard');
+            
+            showNotification(`Welcome back, ${currentUser.username}!`);
+        }
+        
+        // --- User State Management ---
+
+        function updateProfileUI() {
+            const user = getCurrentUser();
+            if (!user) return;
+
+            document.getElementById('userName').textContent = user.username;
+            
+            const badge = document.getElementById('premiumBadge');
+            badge.textContent = user.isPremium ? 'PREMIUM' : 'STANDARD';
+            badge.className = user.isPremium 
+                ? 'px-3 py-1 rounded-full text-sm font-semibold transition duration-300 bg-yellow-400 text-red-800'
+                : 'px-3 py-1 rounded-full text-sm font-semibold transition duration-300 bg-gray-300 text-gray-700';
+
+            updateChatInputs();
+
+            if (document.getElementById('profileContainer').classList.contains('active-view')) {
+                renderProfile(user);
+            }
+
+            if (document.getElementById('friendsListContainer').classList.contains('active-view')) {
+                renderMemberList();
+            }
+        }
+
+        // --- Auth Handlers ---
+
+        async function handleLogin(e) {
+            e.preventDefault();
+            const emailOrUsername = document.getElementById('loginEmail').value;
+            const password = document.getElementById('loginPassword').value;
+
+            const payload = { emailOrUsername, password };
+
+            try {
+                const options = {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                };
+                const response = await fetchWithRetry(API_BASE_URL + '/auth/login', options);
+                const data = await response.json();
+
+                if (response.ok) {
+                    startApp(data.user, data.token);
+                } else {
+                    showNotification(data.error || 'Login failed due to server error.', 'error');
+                }
+            } catch (error) {
+                showNotification('Network error during login. Try again.', 'error');
+                console.error('Login error:', error);
+            }
+        }
+
+        async function handleSignup(e) {
+            e.preventDefault();
+            const username = document.getElementById('signupUsername').value;
+            const email = document.getElementById('signupEmail').value;
+            const password = document.getElementById('signupPassword').value;
+            const confirmPassword = document.getElementById('signupConfirmPassword').value;
+
+            if (password !== confirmPassword) {
+                showNotification('Passwords do not match!', 'error');
+                return;
+            }
+            if (password.length < 6) {
+                 showNotification('Password must be at least 6 characters.', 'error');
+                return;
+            }
+
+            const payload = { username, email, password };
+            
+            try {
+                const options = {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                };
+                const response = await fetchWithRetry(API_BASE_URL + '/auth/register', options);
+                const data = await response.json();
+
+                if (response.ok) {
+                    startApp(data.user, data.token);
+                    showNotification('Account created successfully!', 'success');
+                } else {
+                    showNotification(data.error || 'Sign up failed. Please try a different email/username.', 'error');
+                }
+            } catch (error) {
+                showNotification('Network error during sign up. Try again.', 'error');
+                console.error('Signup error:', error);
+            }
+        }
+        
+        // --- Profile Handlers ---
+        
+        function renderProfile(user) {
+            if (!user) return;
+            
+            // Set inputs (editable)
+            document.getElementById('profileUsername').value = user.username || '';
+            document.getElementById('profileEmail').value = user.email || '';
+            document.getElementById('profileFullName').value = user.full_name || '';
+            document.getElementById('profileContact').value = user.contact_number || '';
+            document.getElementById('profileGender').value = user.gender || '';
+            document.getElementById('profileBirthday').value = user.birthday || ''; // Assumes YYYY-MM-DD format
+
+            // Set status badge
+            const statusBadge = document.getElementById('profilePremiumStatus');
+            statusBadge.textContent = user.isPremium ? 'PREMIUM MEMBER' : 'STANDARD USER';
+            statusBadge.className = user.isPremium 
+                ? 'inline-flex items-center px-3 py-1 text-xs font-semibold rounded-full bg-yellow-400 text-red-800'
+                : 'inline-flex items-center px-3 py-1 text-xs font-semibold rounded-full bg-gray-300 text-gray-700';
+        }
+
+        async function handleProfileUpdate(e) {
+            e.preventDefault();
+
+            const updatedProfile = {
+                username: document.getElementById('profileUsername').value,
+                full_name: document.getElementById('profileFullName').value,
+                contact_number: document.getElementById('profileContact').value,
+                gender: document.getElementById('profileGender').value,
+                birthday: document.getElementById('profileBirthday').value,
+            };
+
+            // SIMULATION: Update the local user object
+            const userIndex = users.findIndex(u => u.id === currentUserId);
+            if (userIndex !== -1) {
+                users[userIndex] = { ...users[userIndex], ...updatedProfile };
+                currentUser = users[userIndex]; // Update global current user
+                updateProfileUI(); // Update header and current view
+                showNotification('Profile updated successfully!', 'success');
+            } else {
+                showNotification('User not found for update.', 'error');
+            }
+
+            // In a real app, you would send this via PUT /api/v1/users/:id
+            /*
+            const response = await fetchWithRetry(API_BASE_URL + `/users/${currentUserId}`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${authToken}` },
+                body: JSON.stringify(updatedProfile)
+            });
+            */
+        }
+        
+        // --- File Management Handlers ---
+
+        function renderFiles() {
+            const fileList = document.getElementById('fileList');
+            const fileCount = document.getElementById('fileCount');
+            
+            fileCount.textContent = files.length;
+            
+            if (files.length === 0) {
+                fileList.innerHTML = `
+                    <div class="text-center py-8 text-gray-500">
+                        <svg class="w-12 h-12 mx-auto mb-4 text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path></svg>
+                        <p>No files uploaded yet</p>
+                        <p class="text-sm">Upload your first file to get started!</p>
+                    </div>
+                `;
+                return;
+            }
+            
+            fileList.innerHTML = files.map(file => {
+                const uploader = getUserById(file.uploaderId);
+                return `
+                    <div class="flex items-center justify-between p-3 border-b border-yellow-200 hover:bg-yellow-50 transition duration-150 rounded-lg mb-1 slide-in">
+                        <div class="flex items-center min-w-0">
+                            ${getFileIcon(file.name)}
+                            <div class="min-w-0">
+                                <p class="font-semibold text-gray-800 truncate">${file.name}</p>
+                                <p class="text-sm text-gray-500">
+                                    <button onclick="viewOtherProfile('${file.uploaderId}')" class="text-red-600 hover:underline">${uploader ? uploader.username : 'Unknown'}</button> | ${formatFileSize(file.size)}
+                                </p>
+                            </div>
+                        </div>
+                        <div class="flex items-center space-x-2 flex-shrink-0">
+                            <button onclick="downloadFile('${file.id}')" class="text-sm text-red-500 hover:text-red-700 font-medium transition duration-200">
+                                Download
+                            </button>
+                            ${(file.uploaderId === currentUserId || isAdmin()) ? `
+                                <button onclick="deleteFile('${file.id}')" class="text-sm text-gray-400 hover:text-red-500 transition duration-200">
+                                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg>
+                                </button>
+                            ` : ''}
+                        </div>
+                    </div>
+                `;
+            }).join('');
+        }
+
+        function downloadFile(fileId) {
+            const file = files.find(f => f.id === fileId);
+            
+            if (!isPremium() && !isAdmin()) {
+                showPaymentModal(() => {
+                    // This function is for confirmation logic, not execution
+                });
+                return;
+            }
+            
+            if (file) {
+                showNotification(`Preparing download for ${file.name}...`, 'success');
+                // SIMULATION: In a real app, this would fetch a signed download URL from the backend
+            }
+        }
+
+        function deleteFile(fileId) {
+            const fileIndex = files.findIndex(f => f.id === fileId);
+            if (fileIndex !== -1) {
+                const file = files[fileIndex];
+                
+                showCustomModal(
+                    'Confirm Deletion',
+                    `Are you sure you want to permanently delete the file "${file.name}"? This action cannot be undone.`,
+                    true, // isConfirm
+                    () => {
+                        files.splice(fileIndex, 1);
+                        renderFiles();
+                        showNotification(`Deleted ${file.name}`, 'error');
+                        // In a real app, this sends DELETE /api/v1/files/:id
+                    }
+                );
+            }
+        }
+
+        function clearAllFiles() {
+            if (files.length === 0) return;
+            
+            showCustomModal(
+                'Confirm Clear All',
+                'Are you sure you want to delete ALL files? This action cannot be undone.',
+                true, // isConfirm
+                () => {
+                    files = [];
+                    renderFiles();
+                    showNotification('All files have been deleted', 'error');
+                }
+            );
+        }
+
+        function setupFileUpload() {
+            const uploadArea = document.getElementById('uploadArea');
+            const fileInput = document.getElementById('fileInput');
+            
+            uploadArea.addEventListener('click', () => fileInput.click());
+            
+            uploadArea.addEventListener('dragover', (e) => {
+                e.preventDefault();
+                uploadArea.classList.add('dragover');
+            });
+            
+            uploadArea.addEventListener('dragleave', () => {
+                uploadArea.classList.remove('dragover');
+            });
+            
+            uploadArea.addEventListener('drop', (e) => {
+                e.preventDefault();
+                uploadArea.classList.remove('dragover');
+                handleFiles(e.dataTransfer.files);
+            });
+            
+            fileInput.addEventListener('change', (e) => {
+                handleFiles(e.target.files);
+                fileInput.value = ''; // Clear input for re-upload
+            });
+        }
+
+        function handleFiles(fileList) {
+            Array.from(fileList).forEach(file => {
+                let maxLimit = isAdmin() ? MAX_FILE_SIZE_ADMIN : MAX_FILE_SIZE_STANDARD;
+                
+                if (file.size > maxLimit) {
+                    showNotification(`File ${file.name} is too large (max ${formatFileSize(maxLimit)})`, 'error');
+                    return;
+                }
+                
+                uploadFile(file);
+            });
+        }
+
+        async function uploadFile(file) {
+            const uploadProgressElement = document.getElementById('uploadProgress');
+            const progressBar = document.getElementById('progressBar');
+            const uploadStatus = document.getElementById('uploadStatus');
+            
+            uploadProgressElement.classList.remove('hidden');
+            uploadStatus.textContent = `Uploading ${file.name}...`;
+            progressBar.style.width = '0%';
+            
+            const formData = new FormData();
+            formData.append('file', file, file.name);
+
+            // SIMULATION: Animate progress bar during fetch
+            let progress = 0;
+            const interval = setInterval(() => {
+                progress += Math.random() * 10; 
+                if (progress < 90) {
+                    progressBar.style.width = progress + '%';
+                }
+            }, 100);
+
+            try {
+                const options = {
+                    method: 'POST',
+                    headers: { 'Authorization': `Bearer ${authToken}` },
+                    formData: formData, // custom prop for simulation
+                    // In a real fetch, formData is used directly, removing the need for 'Content-Type': 'multipart/form-data'
+                };
+                
+                // --- API CALL SIMULATION ---
+                const response = await fetchWithRetry(API_BASE_URL + '/files/upload', options);
+                const data = await response.json();
+
+                clearInterval(interval);
+                progressBar.style.width = '100%';
+
+                if (response.ok) {
+                    // File is already added to the local 'files' array in fetchWithRetry simulation
+                    setTimeout(() => {
+                        uploadProgressElement.classList.add('hidden');
+                        showNotification(`${data.file.name} uploaded and shared!`, 'success');
+                        renderFiles();
+                    }, 500);
+                } else {
+                    throw new Error(data.error || 'Upload failed');
+                }
+            } catch (error) {
+                clearInterval(interval);
+                progressBar.style.width = '0%';
+                uploadProgressElement.classList.add('hidden');
+                showNotification(`Upload failed: ${error.message}`, 'error');
+                console.error('Upload Error:', error);
+            }
+        }
+        
+        // --- Chat Handlers ---
+        
+        function updateChatInputs() {
+            const canChatNow = isPremium() && getCurrentUser().canChat;
+            const inputElement = document.getElementById('messageInput');
+            const sendButton = document.getElementById('sendButton');
+            const attachmentButton = document.getElementById('attachmentButton');
+            const accessMessage = document.getElementById('chatAccessMessage');
+            
+            if (canChatNow) {
+                inputElement.disabled = false;
+                sendButton.disabled = false;
+                attachmentButton.disabled = false;
+                accessMessage.classList.add('hidden');
+            } else {
+                inputElement.disabled = true;
+                sendButton.disabled = true;
+                // Only allow premium users to use attachments, even if temporarily blocked by admin
+                attachmentButton.disabled = !isPremium(); 
+                accessMessage.classList.remove('hidden');
+                if (!isPremium()) {
+                    accessMessage.innerHTML = `<button onclick="requestUpgradePrompt()" class="underline font-semibold hover:text-red-700">Upgrade to Premium</button> to send messages and attachments.`;
+                } else if (!getCurrentUser().canChat) {
+                    accessMessage.textContent = 'Your chatting privileges have been temporarily disabled by an Admin.';
+                }
+            }
+        }
+        
+        function setCurrentRecipient(recipientId) {
+            currentChatRecipientId = recipientId;
+            changeView('messages'); // Rerender the message view
+        }
+
+        function renderRecipientSelector() {
+            const selector = document.getElementById('recipientSelector');
+            const availableRecipients = users.filter(u => u.id !== currentUserId);
+            
+            // Sort to ensure Admin is always at the top
+            availableRecipients.sort((a, b) => {
+                if (a.role === 'admin') return -1;
+                if (b.role === 'admin') return 1;
+                return a.username.localeCompare(b.username);
+            });
+            
+            selector.innerHTML = availableRecipients.map(u => 
+                `<option value="${u.id}" ${u.id === currentChatRecipientId ? 'selected' : ''}>${u.username} ${u.role === 'admin' ? '(Admin)' : ''}</option>`
+            ).join('');
+            
+            if (!currentChatRecipientId && availableRecipients.length > 0) {
+                currentChatRecipientId = availableRecipients[0].id;
+            }
+        }
+
+        function renderMessages(senderId, receiverId) {
+            if (!senderId || !receiverId) return;
+            renderRecipientSelector(); // Ensure selector is updated
+            
+            const chatContainer = document.getElementById('chatContainer');
+            const chatLog = getConversation(senderId, receiverId);
+            
+            if (chatLog.length === 0) {
+                 chatContainer.innerHTML = `
+                    <div class="text-center py-8 text-gray-500">
+                        <p>This conversation is empty.</p>
+                        <p class="text-sm">Start a direct message with ${getUserById(receiverId).username}.</p>
+                    </div>
+                `;
+                chatContainer.scrollTop = chatContainer.scrollHeight;
+                return;
+            }
+
+            chatContainer.innerHTML = chatLog.map(message => {
+                const sender = getUserById(message.senderId);
+                const isMe = message.senderId === currentUserId;
+                const senderName = isMe ? 'You' : (sender ? sender.username : 'Unknown');
+                
+                let messageContent = message.text;
+                if (message.attachmentLink) {
+                    messageContent = `
+                        <div class="p-2 border border-red-300 rounded-lg bg-red-50 mb-1">
+                            <p class="font-semibold text-red-800">FILE ATTACHMENT:</p>
+                            <p class="text-xs text-red-700 truncate">${message.attachmentLink}</p>
+                            <button onclick="showNotification('Simulating file download from link: ${message.attachmentLink}', 'info')" 
+                                class="text-xs text-red-600 hover:text-red-800 underline">
+                                Download File
+                            </button>
+                        </div>
+                        ${message.text ? `<p class="mt-1">${message.text}</p>` : ''}
+                    `;
+                }
+
+                return `
+                    <div class="flex ${isMe ? 'justify-end' : 'justify-start'} mb-3 slide-in">
+                        <div class="chat-bubble ${isMe ? 'mine' : 'other'}">
+                            ${!isMe ? `<span class="block text-xs font-bold mb-1 ${isMe ? 'text-red-200' : 'text-red-700'}">${senderName}:</span>` : ''}
+                            <p class="text-sm">${messageContent}</p>
+                            <span class="block text-xs mt-1 ${isMe ? 'text-red-200' : 'text-gray-500'} text-right">
+                                ${new Date(message.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                            </span>
+                        </div>
+                    </div>
+                `;
+            }).join('');
+            
+            chatContainer.scrollTop = chatContainer.scrollHeight;
+        }
+
+        function handleSendMessage(e) {
+            e.preventDefault();
+            const messageInput = document.getElementById('messageInput');
+            const text = messageInput.value.trim();
+            
+            if (!isPremium() || !getCurrentUser().canChat) return;
+
+            if (!text) return;
+            
+            const senderId = currentUserId;
+            const receiverId = currentChatRecipientId;
+            
+            // SIMULATION: Save the message (simulating a DB write and self-broadcast)
+            saveMessage(senderId, receiverId, text);
+            
+            // SIMULATION: Save a reverse copy to make it show up in the recipient's chat when they view it
+            // In a live Socket.IO app, this would be handled by the server sending the message to the recipient's connection.
+            saveMessage(senderId, receiverId, text); 
+            
+            renderMessages(senderId, receiverId);
+            messageInput.value = '';
+        }
+        
+        function handleChatAttachment() {
+             if (!isPremium() || !getCurrentUser().canChat) return;
+             
+             const fileAttachmentName = prompt('Enter the name of the file you want to attach (e.g., "Budget_Q3.pdf"):');
+             
+             if (fileAttachmentName) {
+                const senderId = currentUserId;
+                const receiverId = currentChatRecipientId;
+                const attachmentLink = `${API_BASE_URL}/download/${fileAttachmentName}`;
+
+                // SIMULATION: Save the message with attachment link
+                saveMessage(senderId, receiverId, `File attached: ${fileAttachmentName}`, attachmentLink);
+
+                // SIMULATION: Save a reverse copy for recipient view
+                saveMessage(senderId, receiverId, `File attached: ${fileAttachmentName}`, attachmentLink);
+                
+                renderMessages(senderId, receiverId);
+                showNotification(`File attachment message sent to ${getUserById(receiverId).username}.`, 'success');
+            }
+        }
+        
+        function requestUpgradePrompt() {
+            showPaymentModal();
+        }
+
+        // --- Friends & Admin Handlers ---
+        
+        function renderMemberList() {
+            const memberList = document.getElementById('memberList');
+            const membersToShow = users.filter(u => u.id !== currentUserId);
+            
+            memberList.innerHTML = membersToShow.map(member => {
+                const isFriend = currentUser.friends.includes(member.id);
+                const isPremiumMember = member.isPremium;
+                const isAdminMember = member.role === 'admin';
+                
+                let adminControlsHtml = '';
+                if (isAdmin()) {
+                    adminControlsHtml = `
+                        <div class="flex space-x-2 text-sm ml-4 border-l pl-4">
+                            <button onclick="togglePremiumStatus('${member.id}')" 
+                                class="px-3 py-1 rounded-full text-white transition duration-200 
+                                ${isPremiumMember ? 'bg-red-500 hover:bg-red-600' : 'bg-green-500 hover:bg-green-600'}">
+                                ${isPremiumMember ? 'Revoke Premium' : 'Grant Premium'}
+                            </button>
+                             <button onclick="toggleChatStatus('${member.id}')" 
+                                class="px-3 py-1 rounded-full text-white transition duration-200 
+                                ${member.canChat ? 'bg-orange-500 hover:bg-orange-600' : 'bg-yellow-800 hover:bg-yellow-900'}">
+                                ${member.canChat ? 'Disable Chat' : 'Enable Chat'}
+                            </button>
+                        </div>
+                    `;
+                }
+
+                return `
+                    <div class="flex items-center justify-between p-4 bg-yellow-50 rounded-lg border border-red-200 hover:shadow-md transition duration-200 slide-in">
+                        <div class="flex items-center space-x-4">
+                            <svg class="w-6 h-6 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14c4.418 0 8 2.239 8 5v2H4v-2c0-2.761 3.582-5 8-5z"></path></svg>
+                            <div>
+                                <p class="font-semibold text-gray-800">${member.username} 
+                                    ${isAdminMember ? '<span class="text-xs bg-red-700 text-white px-2 py-0.5 rounded-full ml-1">ADMIN</span>' : ''}
+                                </p>
+                                <span class="text-xs text-gray-500">
+                                    Status: ${isPremiumMember ? '<span class="text-red-700 font-medium">Premium</span>' : 'Standard'}
+                                    ${!member.canChat ? ' (Chat Disabled)' : ''}
+                                </span>
+                            </div>
+                        </div>
+                        <div class="flex items-center">
+                            <button onclick="viewOtherProfile('${member.id}')" 
+                                class="text-sm text-red-600 hover:text-red-800 font-medium mr-4">
+                                View Profile
+                            </button>
+                            <button onclick="startDirectMessage('${member.id}')" 
+                                class="px-3 py-1 bg-yellow-500 text-red-900 rounded-lg text-sm font-semibold hover:bg-yellow-600 transition duration-200">
+                                Send Message
+                            </button>
+                            ${adminControlsHtml}
+                        </div>
+                    </div>
+                `;
+            }).join('');
+        }
+        
+        function viewOtherProfile(userId) {
+            const user = getUserById(userId);
+            if (!user) return;
+
+            // Store ID temporarily for friend action
+            document.getElementById('otherProfileContainer').dataset.userId = userId;
+
+            // Set content
+            document.getElementById('otherProfileTitle').textContent = user.username;
+            document.getElementById('otherProfileUsername').textContent = user.username;
+            document.getElementById('otherProfileFullName').textContent = user.full_name || 'N/A';
+            document.getElementById('otherProfileContact').textContent = user.contact_number || 'N/A';
+            document.getElementById('otherProfileGender').textContent = user.gender || 'N/A';
+            document.getElementById('otherProfileBirthday').textContent = user.birthday || 'N/A';
+            
+            const statusBadge = document.getElementById('otherProfilePremiumStatus');
+            statusBadge.textContent = user.isPremium ? 'PREMIUM MEMBER' : 'STANDARD USER';
+            statusBadge.className = user.isPremium 
+                ? 'inline-flex items-center px-3 py-1 text-xs font-semibold rounded-full bg-yellow-400 text-red-800'
+                : 'inline-flex items-center px-3 py-1 text-xs font-semibold rounded-full bg-gray-300 text-gray-700';
+
+            // Set Friend Action Button
+            const friendBtn = document.getElementById('friendActionButton');
+            const isFriend = currentUser.friends.includes(userId);
+            
+            friendBtn.textContent = isFriend ? 'Remove Friend' : 'Add Friend';
+            friendBtn.classList.remove('bg-green-600', 'bg-red-500');
+            friendBtn.classList.add(isFriend ? 'bg-red-500' : 'bg-green-600');
+            
+            updateViewVisibility('otherProfile');
+        }
+        
+        function toggleFriendStatus() {
+            const userIdToToggle = document.getElementById('otherProfileContainer').dataset.userId;
+            const friendIndex = currentUser.friends.indexOf(userIdToToggle);
+            
+            if (friendIndex > -1) {
+                // Remove Friend
+                currentUser.friends.splice(friendIndex, 1);
+                showNotification(`Removed ${getUserById(userIdToToggle).username} from friends.`, 'info');
+            } else {
+                // Add Friend
+                currentUser.friends.push(userIdToToggle);
+                showNotification(`Added ${getUserById(userIdToToggle).username} as a friend!`, 'success');
+            }
+            
+            // SIMULATION: Also update the other user's list (for consistency)
+            const otherUserIndex = users.findIndex(u => u.id === userIdToToggle);
+            const selfIndexInOtherList = users[otherUserIndex].friends.indexOf(currentUserId);
+
+            if (friendIndex > -1) {
+                if (selfIndexInOtherList > -1) {
+                     users[otherUserIndex].friends.splice(selfIndexInOtherList, 1);
+                }
+            } else {
+                 if (selfIndexInOtherList === -1) {
+                     users[otherUserIndex].friends.push(currentUserId);
+                }
+            }
+
+            // Rerender the profile view with the new button state
+            viewOtherProfile(userIdToToggle);
+        }
+
+        function startDirectMessage(recipientId) {
+            currentChatRecipientId = recipientId;
+            changeView('messages');
+        }
+
+        // --- Admin Handlers ---
+        
+        function togglePremiumStatus(userId) {
+            if (!isAdmin()) return;
+            
+            const userIndex = users.findIndex(u => u.id === userId);
+            if (userIndex !== -1) {
+                const user = users[userIndex];
+                user.isPremium = !user.isPremium;
+                showNotification(`User ${user.username}'s Premium status set to: ${user.isPremium}`, 'info');
+                
+                // If the user being modified is the current user, update the UI
+                if (user.id === currentUserId) {
+                    currentUser = user;
+                    updateProfileUI();
+                }
+                renderMemberList(); // Refresh the Admin list
+            }
+        }
+        
+        function toggleChatStatus(userId) {
+            if (!isAdmin()) return;
+            
+            const userIndex = users.findIndex(u => u.id === userId);
+            if (userIndex !== -1) {
+                const user = users[userIndex];
+                user.canChat = !user.canChat;
+                showNotification(`User ${user.username}'s chat privilege is now: ${user.canChat ? 'ENABLED' : 'DISABLED'}`, 'info');
+                
+                // If the user being modified is the current user, update the UI
+                if (user.id === currentUserId) {
+                    currentUser = user;
+                    updateProfileUI();
+                }
+                renderMemberList(); // Refresh the Admin list
+            }
+        }
+
+
+        // --- Initialization ---
+        
+        function initializeApp() {
+             // 1. Initial Render
+            if (!currentUserId) {
+                showLanding();
+            } else {
+                startApp(currentUser, authToken); // This should technically not happen in a fresh load, but for safety
+            }
+            
+            // 2. Setup File Upload listeners
+            setupFileUpload();
+        }
+
+        // Set initial view on load
+        document.addEventListener('DOMContentLoaded', initializeApp);
+
+    </script>
+</body>
+</html>
