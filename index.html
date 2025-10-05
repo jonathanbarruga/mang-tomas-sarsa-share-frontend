@@ -103,7 +103,17 @@
     
     <!-- Custom Modal for Confirmation/Alerts -->
     <div id="confirmationModal" class="fixed inset-0 bg-gray-900 bg-opacity-75 hidden items-center justify-center z-50 p-4">
-        <div class="bg-white rounded-xl shadow-2xl max-w-sm w-full p-6 transform transition-all duration-300 scale-100">
+        <!-- Added relative class to position the X button -->
+        <div class="bg-white rounded-xl shadow-2xl max-w-sm w-full p-6 transform transition-all duration-300 scale-100 relative">
+            <!-- X Button to Close Modal -->
+            <button 
+                onclick="document.getElementById('confirmationModal').classList.add('hidden')" 
+                class="absolute top-4 right-4 text-gray-400 hover:text-gray-600 transition"
+                aria-label="Close Modal"
+            >
+                <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
+            </button>
+            
             <h3 id="modalTitle" class="text-xl font-bold text-red-700 mb-3">Confirm Action</h3>
             <p id="modalMessage" class="text-gray-700 mb-6">Are you sure you want to proceed?</p>
             <div id="modalContent" class="mb-6 text-sm bg-yellow-50 p-3 rounded-lg border border-yellow-200 hidden"></div>
@@ -224,6 +234,12 @@
                     <input type="password" id="loginPassword" required minlength="6"
                            class="mt-1 block w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-red-500 focus:border-red-500">
                 </div>
+                <!-- Forgot Password Link -->
+                <p class="text-right text-sm">
+                    <button type="button" onclick="showForgotPasswordModal()" class="text-red-600 hover:text-red-800 font-medium hover:underline">
+                        Forgot Password?
+                    </button>
+                </p>
                 <button type="submit" 
                         class="w-full px-4 py-2 bg-red-600 text-white font-semibold rounded-lg shadow-md hover:bg-red-700 transition duration-200">
                     Log In
@@ -279,7 +295,10 @@
                 </div>
                 
                 <div class="flex items-center space-x-4 mt-2 sm:mt-0">
-                    <span class="text-red-200 hidden sm:inline">Welcome, <span id="userName" class="font-semibold">User</span>!</span>
+                    <div class="flex items-center space-x-2">
+                        <img id="headerProfilePic" class="w-8 h-8 rounded-full border-2 border-yellow-400 object-cover" src="https://placehold.co/40x40/991b1b/ffffff?text=U" alt="Profile Picture"/>
+                        <span class="text-red-200 hidden sm:inline">Welcome, <span id="userName" class="font-semibold">User</span>!</span>
+                    </div>
                     <button onclick="changeView('dashboard')" class="text-white hover:text-yellow-400 px-3 py-1 rounded-lg transition duration-200">Dashboard</button>
                     <button onclick="changeView('profile')" class="text-white hover:text-yellow-400 px-3 py-1 rounded-lg transition duration-200">My Profile</button>
                     <button onclick="changeView('friends')" class="text-white hover:text-yellow-400 px-3 py-1 rounded-lg transition duration-200">Friends</button>
@@ -348,6 +367,22 @@
                     </div>
                     
                     <form id="profileForm" onsubmit="handleProfileUpdate(event)" class="space-y-5">
+                         <!-- Profile Picture Section -->
+                        <div class="flex items-center space-x-4 pb-4 border-b border-gray-100">
+                            <img id="profilePagePic" class="w-20 h-20 rounded-full border-4 border-yellow-500 object-cover" src="https://placehold.co/80x80/991b1b/ffffff?text=U" alt="Profile Picture"/>
+                            
+                            <!-- REPLACED URL INPUT WITH BUTTON -->
+                            <button 
+                                type="button" 
+                                onclick="setProfilePicturePrompt()" 
+                                id="setProfilePicButton"
+                                class="px-4 py-2 bg-yellow-500 text-red-900 font-semibold rounded-lg shadow-md hover:bg-yellow-600 transition duration-200"
+                            >
+                                Set Profile Picture
+                            </button>
+                            <input type="hidden" id="profilePictureUrl" value=""> 
+                        </div>
+
                         <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
                             <!-- Username -->
                             <div>
@@ -482,7 +517,7 @@
             <div id="otherProfileContainer" class="hidden max-w-2xl mx-auto space-y-6">
                 <div class="bg-white rounded-xl shadow-lg p-8 border-t-8 border-yellow-600">
                     <div class="flex items-center mb-6 border-b pb-4">
-                        <svg class="w-10 h-10 text-yellow-600 mr-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14c4.418 0 8 2.239 8 5v2H4v-2c0-2.761 3.582-5 8-5z"></path></svg>
+                        <img id="otherProfilePagePic" class="w-10 h-10 rounded-full border-2 border-yellow-600 object-cover mr-4" src="https://placehold.co/40x40/991b1b/ffffff?text=U" alt="Profile Picture"/>
                         <h2 id="otherProfileTitle" class="text-3xl font-bold text-gray-800">User Profile</h2>
                     </div>
                     
@@ -533,35 +568,89 @@
         // API Configuration (Simulated)
         const API_BASE_URL = 'https://mang-tomas-sarsa-share-api.onrender.com/api/v1'; 
         
+        // --- POLLING CONSTANTS ---
+        const POLLING_INTERVAL = 5000; // 5 seconds
+        let pollingIntervalId = null; 
+        // -------------------------
+
         // Simulating the user database and state
         let currentUserId = null;
         let currentUser = null;
         let authToken = null;
+        let currentView = 'dashboard'; // Default view
         let currentChatRecipientId = null; 
         
         const MAX_FILE_SIZE_STANDARD = 100 * 1024 * 1024; // 100MB
         const MAX_FILE_SIZE_ADMIN = 3 * 1024 * 1024 * 1024; // 3GB
+        const PREMIUM_AMOUNT = '₱20.00';
+        const GCASH_NUMBER = '09685289257';
 
         // --- Simulated Database ---
         let users = [
-            { id: '1', email: 'jonathanbarruga@gmail.com', username: 'Jonathan B - Admin', password: '@1#2$3_4&5', role: 'admin', isPremium: true, canChat: true, full_name: 'Jonathan Barruga', contact_number: '09685289257', gender: 'Male', birthday: '1990-01-01', friends: ['2'] },
-            { id: '2', email: 'test@app.com', username: 'test', password: 'password', role: 'standard', isPremium: false, canChat: true, full_name: 'Maria Santos', contact_number: '09123456789', gender: 'Female', birthday: '1995-05-15', friends: ['1', '3'] },
-            { id: '3', email: 'maria@app.com', username: 'Maria', password: 'pass', role: 'standard', isPremium: false, canChat: true, full_name: 'Maria Dela Cruz', contact_number: '09222222222', gender: 'Female', birthday: '2000-10-20', friends: ['2'] },
+            { id: '1', email: 'jonathanbarruga@gmail.com', username: 'Jonathan B - Admin', password: '@1#2$3_4&5', role: 'admin', isPremium: true, canChat: true, full_name: 'Jonathan Barruga', contact_number: '09685289257', gender: 'Male', birthday: '1990-01-01', friends: ['2'], profilePictureUrl: 'https://placehold.co/40x40/991b1b/ffffff?text=JB' },
+            { id: '2', email: 'test@app.com', username: 'test', password: 'password', role: 'standard', isPremium: false, canChat: true, full_name: 'Maria Santos', contact_number: '09123456789', gender: 'Female', birthday: '1995-05-15', friends: ['1', '3'], profilePictureUrl: 'https://placehold.co/40x40/fcd34d/991b1b?text=MS' },
+            { id: '3', email: 'maria@app.com', username: 'Maria', password: 'pass', role: 'standard', isPremium: false, canChat: true, full_name: 'Maria Dela Cruz', contact_number: '09222222222', gender: 'Female', birthday: '2000-10-20', friends: ['2'], profilePictureUrl: '' },
         ];
 
         let files = [
             { id: 'f1', name: 'Project_Proposal.pdf', size: 2048576, uploaderId: '1', timestamp: Date.now() - 3600000 },
             { id: 'f2', name: 'Budget_Spreadsheet.xlsx', size: 1024000, uploaderId: '2', timestamp: Date.now() - 7200000 },
-            { id: 'f3', name: 'Design_Mockups.zip', size: 15728640, uploaderId: '3', timestamp: Date.now() - 10800000 }
+            { id: 'f3', name: 'Design_Mockups.zip', size: 15728640, uploaderId: '3', timestamp: Date.now() - 10800000 },
+            { id: 'f4', name: 'New_Report_2025.docx', size: 300000, uploaderId: '1', timestamp: Date.now() }, 
+            { id: 'f5', name: 'Marketing_Plan_V2.pdf', size: 8500000, uploaderId: '2', timestamp: Date.now() } // <-- New file added
         ];
         
         let conversations = {}; // { 'user1_user2': [{...messages...}], 'user2_user1': [...] }
         // --- End Simulated Database ---
 
+        // --- Session Management (Persistence) ---
+        function saveSession() {
+            if (authToken) {
+                localStorage.setItem('authToken', authToken);
+                localStorage.setItem('currentView', currentView);
+            } else {
+                localStorage.removeItem('authToken');
+                localStorage.removeItem('currentView');
+            }
+        }
+
+        function loadSession() {
+            const token = localStorage.getItem('authToken');
+            const view = localStorage.getItem('currentView');
+            
+            if (token) {
+                // Decode token to get user info (simulated)
+                try {
+                    const payload = JSON.parse(atob(token));
+                    const user = getUserById(payload.userId);
+                    if (user) {
+                        // Re-establish global state
+                        currentUserId = user.id;
+                        currentUser = user;
+                        authToken = token;
+                        currentView = view || 'dashboard';
+                        return true;
+                    }
+                } catch (e) {
+                    console.error("Failed to decode token on load:", e);
+                    localStorage.removeItem('authToken');
+                }
+            }
+            return false;
+        }
+
         // --- Simulation Helper Functions ---
+
+        function getAdminUser() {
+            return users.find(u => u.role === 'admin');
+        }
 
         function getUserById(id) {
             return users.find(u => u.id === id);
+        }
+
+        function getUserByEmail(email) {
+            return users.find(u => u.email.toLowerCase() === email.toLowerCase());
         }
 
         function getCurrentUser() {
@@ -575,6 +664,12 @@
         function isPremium() {
             return currentUser && currentUser.isPremium;
         }
+        
+        function getAvatarUrl(user) {
+            if (!user) return 'https://placehold.co/40x40/991b1b/ffffff?text=U';
+            return user.profilePictureUrl || `https://placehold.co/40x40/991b1b/ffffff?text=${user.username.charAt(0)}`;
+        }
+
 
         function getChatKey(id1, id2) {
             return [id1, id2].sort().join('_');
@@ -586,7 +681,9 @@
         }
 
         function saveMessage(senderId, receiverId, text, attachmentLink = null) {
+            // FIX: Only save the message once to the canonical conversation key.
             const key = getChatKey(senderId, receiverId);
+
             const newMessage = {
                 id: Date.now().toString(),
                 senderId: senderId,
@@ -596,14 +693,16 @@
                 timestamp: Date.now()
             };
 
-            if (!conversations[key]) {
-                conversations[key] = [];
-            }
+            // Save to the single canonical conversation path
+            if (!conversations[key]) { conversations[key] = []; }
             conversations[key].push(newMessage);
             
-            // Simulating a real-time broadcast to the recipient
-            // If the recipient is currently viewing the chat, update their view
-            // In a live system, Socket.IO would handle this.
+            // Simulating a real-time broadcast/update
+            // If the active chat partner is the recipient, refresh their view
+            if (currentChatRecipientId === receiverId && currentUserId === senderId) {
+                renderMessages(currentUserId, receiverId);
+            }
+            // If the active chat partner is the sender, refresh their view
             if (currentChatRecipientId === senderId && currentUserId === receiverId) {
                  renderMessages(currentUserId, senderId);
             }
@@ -614,15 +713,8 @@
         async function fetchWithRetry(url, options, retries = 3) {
             // --- SIMULATING LIVE API CALLS ---
 
-            // --- ADMIN CREDENTIALS FOR SIMULATION ---
-            const ADMIN_EMAIL = 'jonathanbarruga@gmail.com';
-            const ADMIN_PASS = '@1#2$3_4&5';
-            
-            const TEST_USER = 'test';
-            const TEST_PASS = 'password';
-
             const userBody = JSON.parse(options.body || '{}');
-            const authHeader = options.headers['Authorization'] || '';
+            const authHeader = options.headers?.['Authorization'] || '';
             
             // 1. AUTH SIMULATION
             if (url.endsWith('/auth/login') || url.endsWith('/auth/register')) {
@@ -664,7 +756,8 @@
                         contact_number: '', 
                         gender: '', 
                         birthday: '',
-                        friends: []
+                        friends: [],
+                        profilePictureUrl: '' // New field initialized
                     };
                     users.push(newUser);
                     const token = btoa(JSON.stringify({ userId: newUser.id, role: newUser.role, isPremium: newUser.isPremium }));
@@ -748,29 +841,31 @@
                 timestamp: Date.now()
             };
             
-            // This global broadcast is simulated as a message to all users
-            // In a real app, this would be io.emit('file_uploaded', message);
-            
             // For simulation, we create a system message in all active conversations
             users.forEach(recipient => {
                 if (recipient.id !== sender.id) {
+                    // Using the system message style for broadcast info
                     saveMessage(sender.id, recipient.id, message.text, null);
                 }
             });
-            
-            // If the current user is looking at the Messages view, rerender
-            if (currentUserId && document.getElementById('messagesContainer').classList.contains('active-view')) {
-                renderMessages(currentUserId, currentChatRecipientId);
-            }
         }
 
         // --- Utility Functions ---
 
-        function showCustomModal(title, message, isConfirm, onConfirm) {
+        function showCustomModal(title, message, isConfirm, onConfirm, modalContentHTML = null) {
             const modal = document.getElementById('confirmationModal');
             document.getElementById('modalTitle').textContent = title;
             document.getElementById('modalMessage').textContent = message;
-            document.getElementById('modalContent').classList.add('hidden');
+            
+            const content = document.getElementById('modalContent');
+            
+            if (modalContentHTML) {
+                content.innerHTML = modalContentHTML;
+                content.classList.remove('hidden');
+            } else {
+                content.classList.add('hidden');
+                content.innerHTML = '';
+            }
             
             const confirmBtn = document.getElementById('modalConfirm');
             const cancelBtn = document.getElementById('modalCancel');
@@ -788,42 +883,194 @@
                 cancelBtn.onclick = () => modal.classList.add('hidden');
             }
             
-            modal.classList.remove('hidden');
-            modal.style.display = 'flex';
+            // Fix: Rely solely on the Tailwind 'hidden' class for visibility control
+            modal.classList.remove('hidden'); 
+        }
+        
+        // --- Profile Picture Functions (New) ---
+        function setProfilePicturePrompt() {
+            const currentUrl = currentUser.profilePictureUrl || '';
+            const newUrl = prompt("Enter the URL for your profile picture:", currentUrl);
+            
+            if (newUrl === null) {
+                // User clicked cancel
+                return;
+            }
+            
+            // Check if the URL is somewhat valid (very basic check)
+            if (newUrl.trim() && !newUrl.startsWith('http')) {
+                showNotification("Invalid URL. Must start with http or https.", 'error');
+                return;
+            }
+            
+            // Set the value in the hidden input and trigger the form save
+            document.getElementById('profilePictureUrl').value = newUrl.trim();
+            document.getElementById('profileForm').requestSubmit();
         }
 
-        function showPaymentModal(actionCallback) {
-            const modal = document.getElementById('confirmationModal');
-            document.getElementById('modalTitle').textContent = "Premium Upgrade Required";
-            document.getElementById('modalMessage').textContent = "Upgrade to Premium (₱20/month) to unlock this feature.";
+        // --- Password Recovery Simulation ---
+
+        function showForgotPasswordModal() {
+             showCustomModal(
+                "Password Recovery",
+                "Please enter the email address associated with your account.",
+                true, // isConfirm
+                () => {
+                    // On confirm, handle the password request
+                    const email = document.getElementById('recoveryEmailInput').value;
+                    handlePasswordRecovery(email);
+                },
+                `
+                <form id="recoveryForm" onsubmit="event.preventDefault(); document.getElementById('modalConfirm').click();" class="space-y-4">
+                    <div>
+                        <label for="recoveryEmailInput" class="block text-sm font-medium text-gray-700">Email Address</label>
+                        <input type="email" id="recoveryEmailInput" required 
+                               class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-red-500 focus:border-red-500">
+                    </div>
+                </form>
+                `
+            );
+            document.getElementById('modalConfirm').textContent = 'Send Recovery Link';
+            document.getElementById('modalCancel').textContent = 'Cancel';
+        }
+
+        function handlePasswordRecovery(email) {
+            const user = getUserByEmail(email);
+            const adminUser = getAdminUser();
+
+            if (!user) {
+                showNotification(`No account found for email: ${email}.`, 'error');
+                return;
+            }
+
+            if (!adminUser) {
+                 showNotification("Admin user not found. Recovery request failed.", 'error');
+                 return;
+            }
+
+            // SIMULATION: Send notification to the Admin (Jonathan B)
+            const notificationMessage = `
+**PASSWORD RECOVERY REQUEST**
+User: ${user.username} (${user.id})
+Email: ${email}
+*Please contact the user via email and issue a new temporary password for recovery, then update their account details in the database.*
+            `.trim();
+
+            saveMessage(user.id, adminUser.id, notificationMessage);
             
-            const content = document.getElementById('modalContent');
-            content.innerHTML = `
-                <p class="font-bold mb-2 text-red-700">Payment Instructions:</p>
-                <p>1. Send ₱20.00 via GCash.</p>
-                <p class="font-mono text-lg text-red-600">GCash: 09685289257</p>
-                <p>2. Wait for Admin verification.</p>
+            showNotification(`Recovery link sent to ${email}! Check your spam/junk folder.`, 'success');
+            // Inform the user of the manual Admin step in the simulation
+            setTimeout(() => {
+                showNotification("NOTE (Simulation): The admin has been notified to reset your password.", 'info');
+            }, 1000);
+        }
+
+        // --- Payment Modals ---
+
+        function showPaymentDetailsModal() {
+            const adminUser = getAdminUser();
+            const paymentDetailsHTML = `
+                <form id="paymentForm" class="space-y-4">
+                    <p class="font-bold text-lg text-red-700">Premium Upgrade: ${PREMIUM_AMOUNT}</p>
+                    <div class="bg-red-50 p-3 rounded-lg border border-red-200">
+                        <p class="text-sm font-medium">Send payment to:</p>
+                        <p class="font-mono text-base font-bold text-red-600">${GCASH_NUMBER}</p>
+                        <p class="text-xs text-red-500">(${adminUser ? adminUser.username : 'Admin'})</p>
+                    </div>
+                    <div>
+                        <label for="paymentNumber" class="block text-sm font-medium text-gray-700">Your GCash Number (Source)</label>
+                        <input type="tel" id="paymentNumber" required pattern="[0-9]{11,}" placeholder="e.g., 09xxxxxxxxx" 
+                               class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-yellow-500 focus:border-yellow-500">
+                    </div>
+                    <div>
+                        <label for="paymentRef" class="block text-sm font-medium text-gray-700">Reference Number (8-13 digits)</label>
+                        <input type="text" id="paymentRef" required pattern="[0-9]{8,13}" placeholder="e.g., 123456789012"
+                               class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-yellow-500 focus:border-yellow-500">
+                    </div>
+                    <input type="hidden" id="paymentAmount" value="${PREMIUM_AMOUNT}">
+                </form>
             `;
-            content.classList.remove('hidden');
-
-            const confirmBtn = document.getElementById('modalConfirm');
-            const cancelBtn = document.getElementById('modalCancel');
-
-            confirmBtn.textContent = 'I Sent Payment (Wait for Verification)';
-            confirmBtn.classList.remove('hidden');
-
-            confirmBtn.onclick = () => {
-                modal.classList.add('hidden');
-                showNotification("Payment noted. Please wait for the Admin to update your status.", 'info');
-                // You would typically log this request to the database here
-            };
-            cancelBtn.textContent = 'Maybe Later';
-            cancelBtn.onclick = () => modal.classList.add('hidden');
             
-            modal.classList.remove('hidden');
-            modal.style.display = 'flex';
+            showCustomModal(
+                "Confirm Payment Details",
+                "Please enter your payment details below to notify the Admin for verification.",
+                true, // isConfirm
+                () => {
+                    // Confirmed: Process payment notification
+                    const paymentNumber = document.getElementById('paymentNumber').value;
+                    const paymentRef = document.getElementById('paymentRef').value;
+                    const paymentAmount = document.getElementById('paymentAmount').value;
+
+                    // Simple form validation check before sending 
+                    if (!paymentNumber || !paymentRef || !paymentNumber.match(/[0-9]{11,}/) || !paymentRef.match(/[0-9]{8,13}/)) {
+                        showNotification("Please check your payment details. Number must be 11 digits and Ref must be 8-13 digits.", 'error');
+                        return; // Stop execution if invalid
+                    }
+
+                    // 1. Send Automatic Message to Admin
+                    sendPaymentNotificationToAdmin(paymentNumber, paymentRef, paymentAmount);
+
+                    // 2. Notify User
+                    showNotification("Payment notification sent! Please wait for Admin verification.", 'info');
+
+                    // 3. Navigate to profile for user to check status (Optional but helpful)
+                    changeView('profile');
+
+                },
+                paymentDetailsHTML
+            );
+
+            // Change button texts for the details modal
+            document.getElementById('modalConfirm').textContent = 'Submit Details & Notify Admin';
+            document.getElementById('modalCancel').textContent = 'Maybe Later';
         }
 
+        function showPaymentModal() {
+            // This is the first modal showing instructions
+            showCustomModal(
+                "Premium Upgrade Required",
+                "Upgrade to Premium to unlock this feature.",
+                true, // isConfirm
+                () => {
+                    // When user clicks 'I Sent Payment (Next Step)', show the next modal
+                    showPaymentDetailsModal();
+                },
+                `
+                <p class="font-bold mb-2 text-red-700">Upgrade Details:</p>
+                <p class="mb-3">1. Send ${PREMIUM_AMOUNT} via GCash to the number below.</p>
+                <p class="font-mono text-xl text-red-600 mb-4 text-center">GCash: ${GCASH_NUMBER}</p>
+                <p class="text-sm">2. **Crucial:** Click 'I Sent Payment' and provide your **Source Number** and **Reference Number** to notify Admin for verification.</p>
+                `
+            );
+
+            document.getElementById('modalConfirm').textContent = 'I Sent Payment (Next Step)';
+            document.getElementById('modalCancel').textContent = 'Maybe Later';
+        }
+
+        function sendPaymentNotificationToAdmin(sourceNumber, refNumber, amount) {
+            const adminUser = getAdminUser();
+            const sender = getCurrentUser();
+            
+            if (!adminUser || !sender) return;
+
+            const message = `
+**PREMIUM PAYMENT NOTIFICATION**
+User: ${sender.username} (${sender.id})
+Amount: ${amount}
+Source Number (User): ${sourceNumber}
+GCash Reference No.: ${refNumber}
+*Please check payment and update the user's Premium status.*
+            `.trim();
+            
+            // Send the message from the current user to the admin
+            saveMessage(sender.id, adminUser.id, message);
+
+            // If the current user is viewing messages with the admin, re-render
+            if (currentChatRecipientId === adminUser.id) {
+                renderMessages(currentUserId, adminUser.id);
+            }
+        }
+        
         function formatFileSize(bytes) {
             if (bytes === 0) return '0 Bytes';
             const k = 1024;
@@ -905,6 +1152,8 @@
         }
         
         function changeView(viewName) {
+            currentView = viewName;
+            saveSession(); // Save the current view for persistence
             updateViewVisibility(viewName);
             
             if (viewName === 'dashboard') {
@@ -922,12 +1171,14 @@
         }
 
         function showLanding() {
-            // Clear current user state
+            // Clear current user state and session storage
             currentUserId = null;
             currentUser = null;
             authToken = null;
             currentChatRecipientId = null;
-            
+            saveSession(); // Clear session storage
+            stopPolling();
+
             document.getElementById('mainApp').classList.add('hidden');
             document.getElementById('authPage').classList.add('hidden');
             document.getElementById('landingPage').classList.remove('hidden');
@@ -961,18 +1212,11 @@
             authToken = token;
 
             // Set Header Info
-            document.getElementById('userName').textContent = currentUser.username;
+            updateProfileUI();
             
             // Set File Limit Info
             const limit = currentUser.role === 'admin' ? formatFileSize(MAX_FILE_SIZE_ADMIN) : formatFileSize(MAX_FILE_SIZE_STANDARD);
             document.getElementById('fileLimitInfo').textContent = `Supports all file types • Max ${limit} per file`;
-
-            // Set Badge
-            const badge = document.getElementById('premiumBadge');
-            badge.textContent = currentUser.isPremium ? 'PREMIUM' : 'STANDARD';
-            badge.className = currentUser.isPremium 
-                ? 'px-3 py-1 rounded-full text-sm font-semibold transition duration-300 bg-yellow-400 text-red-800'
-                : 'px-3 py-1 rounded-full text-sm font-semibold transition duration-300 bg-gray-300 text-gray-700';
 
             // Set Admin Controls Visibility
             const adminPanel = document.getElementById('adminControlsPanel');
@@ -982,21 +1226,30 @@
                 adminPanel.classList.add('hidden');
             }
 
-            // Set initial chat recipient to Admin (if not admin), or first user (if admin)
-            const availableRecipients = users.filter(u => u.id !== currentUserId);
-            if (availableRecipients.length > 0) {
-                currentChatRecipientId = availableRecipients[0].id;
-            } else {
-                currentChatRecipientId = null;
+            // Set initial chat recipient if none is set (or re-set if necessary)
+            if (!currentChatRecipientId || !getUserById(currentChatRecipientId)) {
+                const availableRecipients = users.filter(u => u.id !== currentUserId);
+                const adminUser = getAdminUser();
+                
+                if (adminUser && adminUser.id !== currentUserId) {
+                     currentChatRecipientId = adminUser.id; // Default to Admin
+                } else if (availableRecipients.length > 0) {
+                    currentChatRecipientId = availableRecipients[0].id;
+                } else {
+                    currentChatRecipientId = null;
+                }
             }
 
             document.getElementById('landingPage').classList.add('hidden');
             document.getElementById('authPage').classList.add('hidden');
             document.getElementById('mainApp').classList.remove('hidden');
 
-            changeView('dashboard');
+            changeView(currentView); // Navigate to the persisted view
+            saveSession();
+
+            startPolling();
             
-            showNotification(`Welcome back, ${currentUser.username}!`);
+            // showNotification(`Welcome back, ${currentUser.username}!`);
         }
         
         // --- User State Management ---
@@ -1004,9 +1257,14 @@
         function updateProfileUI() {
             const user = getCurrentUser();
             if (!user) return;
-
-            document.getElementById('userName').textContent = user.username;
             
+            const avatarUrl = getAvatarUrl(user);
+
+            // Update Header
+            document.getElementById('userName').textContent = user.username;
+            document.getElementById('headerProfilePic').src = avatarUrl;
+            
+            // Update Badge
             const badge = document.getElementById('premiumBadge');
             badge.textContent = user.isPremium ? 'PREMIUM' : 'STANDARD';
             badge.className = user.isPremium 
@@ -1044,6 +1302,7 @@
 
                 if (response.ok) {
                     startApp(data.user, data.token);
+                    showNotification('Logged in successfully!', 'success');
                 } else {
                     showNotification(data.error || 'Login failed due to server error.', 'error');
                 }
@@ -1104,6 +1363,12 @@
             document.getElementById('profileContact').value = user.contact_number || '';
             document.getElementById('profileGender').value = user.gender || '';
             document.getElementById('profileBirthday').value = user.birthday || ''; // Assumes YYYY-MM-DD format
+            
+            // Update hidden input with current value
+            document.getElementById('profilePictureUrl').value = user.profilePictureUrl || ''; 
+
+            // Set profile picture on page
+            document.getElementById('profilePagePic').src = getAvatarUrl(user);
 
             // Set status badge
             const statusBadge = document.getElementById('profilePremiumStatus');
@@ -1116,12 +1381,16 @@
         async function handleProfileUpdate(e) {
             e.preventDefault();
 
+            // Get profile picture URL from the HIDDEN input, which is set by the button prompt.
+            const profilePicUrl = document.getElementById('profilePictureUrl').value;
+
             const updatedProfile = {
                 username: document.getElementById('profileUsername').value,
                 full_name: document.getElementById('profileFullName').value,
                 contact_number: document.getElementById('profileContact').value,
                 gender: document.getElementById('profileGender').value,
                 birthday: document.getElementById('profileBirthday').value,
+                profilePictureUrl: profilePicUrl, // Use the value set by the button/prompt
             };
 
             // SIMULATION: Update the local user object
@@ -1196,9 +1465,7 @@
             const file = files.find(f => f.id === fileId);
             
             if (!isPremium() && !isAdmin()) {
-                showPaymentModal(() => {
-                    // This function is for confirmation logic, not execution
-                });
+                showPaymentModal();
                 return;
             }
             
@@ -1395,6 +1662,7 @@
             renderRecipientSelector(); // Ensure selector is updated
             
             const chatContainer = document.getElementById('chatContainer');
+            // FIX: Use the single canonical key to retrieve the conversation
             const chatLog = getConversation(senderId, receiverId);
             
             if (chatLog.length === 0) {
@@ -1414,6 +1682,8 @@
                 const senderName = isMe ? 'You' : (sender ? sender.username : 'Unknown');
                 
                 let messageContent = message.text;
+                let isSystemMessage = messageContent.includes('PREMIUM PAYMENT NOTIFICATION') || messageContent.includes('FILE SHARE') || messageContent.includes('PASSWORD RECOVERY REQUEST');
+
                 if (message.attachmentLink) {
                     messageContent = `
                         <div class="p-2 border border-red-300 rounded-lg bg-red-50 mb-1">
@@ -1424,15 +1694,26 @@
                                 Download File
                             </button>
                         </div>
-                        ${message.text ? `<p class="mt-1">${message.text}</p>` : ''}
+                        ${message.text && !message.text.includes('File attached:') ? `<p class="mt-1">${message.text}</p>` : ''}
                     `;
                 }
+
+                if (isSystemMessage) {
+                    return `
+                        <div class="text-center my-3">
+                            <span class="inline-block px-3 py-1 text-xs text-gray-600 bg-yellow-200 rounded-full shadow-md">
+                                ${messageContent.replace(/\n/g, '<br>')}
+                            </span>
+                        </div>
+                    `;
+                }
+
 
                 return `
                     <div class="flex ${isMe ? 'justify-end' : 'justify-start'} mb-3 slide-in">
                         <div class="chat-bubble ${isMe ? 'mine' : 'other'}">
                             ${!isMe ? `<span class="block text-xs font-bold mb-1 ${isMe ? 'text-red-200' : 'text-red-700'}">${senderName}:</span>` : ''}
-                            <p class="text-sm">${messageContent}</p>
+                            <p class="text-sm whitespace-pre-wrap">${messageContent}</p>
                             <span class="block text-xs mt-1 ${isMe ? 'text-red-200' : 'text-gray-500'} text-right">
                                 ${new Date(message.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                             </span>
@@ -1456,14 +1737,11 @@
             const senderId = currentUserId;
             const receiverId = currentChatRecipientId;
             
-            // SIMULATION: Save the message (simulating a DB write and self-broadcast)
+            // SIMULATION: Save the message 
             saveMessage(senderId, receiverId, text);
             
-            // SIMULATION: Save a reverse copy to make it show up in the recipient's chat when they view it
-            // In a live Socket.IO app, this would be handled by the server sending the message to the recipient's connection.
-            saveMessage(senderId, receiverId, text); 
-            
-            renderMessages(senderId, receiverId);
+            // Rerender the chat to show the new message
+            // Rerender is now handled inside saveMessage for simplicity
             messageInput.value = '';
         }
         
@@ -1478,10 +1756,8 @@
                 const attachmentLink = `${API_BASE_URL}/download/${fileAttachmentName}`;
 
                 // SIMULATION: Save the message with attachment link
-                saveMessage(senderId, receiverId, `File attached: ${fileAttachmentName}`, attachmentLink);
-
-                // SIMULATION: Save a reverse copy for recipient view
-                saveMessage(senderId, receiverId, `File attached: ${fileAttachmentName}`, attachmentLink);
+                const attachmentText = `File attached: ${fileAttachmentName}`;
+                saveMessage(senderId, receiverId, attachmentText, attachmentLink);
                 
                 renderMessages(senderId, receiverId);
                 showNotification(`File attachment message sent to ${getUserById(receiverId).username}.`, 'success');
@@ -1502,6 +1778,7 @@
                 const isFriend = currentUser.friends.includes(member.id);
                 const isPremiumMember = member.isPremium;
                 const isAdminMember = member.role === 'admin';
+                const avatarUrl = getAvatarUrl(member);
                 
                 let adminControlsHtml = '';
                 if (isAdmin()) {
@@ -1524,7 +1801,7 @@
                 return `
                     <div class="flex items-center justify-between p-4 bg-yellow-50 rounded-lg border border-red-200 hover:shadow-md transition duration-200 slide-in">
                         <div class="flex items-center space-x-4">
-                            <svg class="w-6 h-6 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14c4.418 0 8 2.239 8 5v2H4v-2c0-2.761 3.582-5 8-5z"></path></svg>
+                            <img class="w-8 h-8 rounded-full object-cover border border-red-400" src="${avatarUrl}" alt="${member.username}"/>
                             <div>
                                 <p class="font-semibold text-gray-800">${member.username} 
                                     ${isAdminMember ? '<span class="text-xs bg-red-700 text-white px-2 py-0.5 rounded-full ml-1">ADMIN</span>' : ''}
@@ -1566,6 +1843,9 @@
             document.getElementById('otherProfileGender').textContent = user.gender || 'N/A';
             document.getElementById('otherProfileBirthday').textContent = user.birthday || 'N/A';
             
+            // Set profile picture
+            document.getElementById('otherProfilePagePic').src = getAvatarUrl(user);
+
             const statusBadge = document.getElementById('otherProfilePremiumStatus');
             statusBadge.textContent = user.isPremium ? 'PREMIUM MEMBER' : 'STANDARD USER';
             statusBadge.className = user.isPremium 
@@ -1658,15 +1938,44 @@
             }
         }
 
+        // --- Polling Logic for Simulated Real-Time Updates ---
+        
+        function startPolling() {
+            if (pollingIntervalId) {
+                clearInterval(pollingIntervalId);
+            }
+            pollingIntervalId = setInterval(() => {
+                if (currentUserId) {
+                    // Refresh files list if the user is on the Dashboard view
+                    if (document.getElementById('dashboardContainer').classList.contains('active-view')) {
+                        renderFiles(); 
+                    }
+                    // Refresh member list if the user is on the Friends view
+                    if (document.getElementById('friendsListContainer').classList.contains('active-view')) {
+                        renderMemberList();
+                    }
+                }
+            }, POLLING_INTERVAL);
+        }
+
+        function stopPolling() {
+            if (pollingIntervalId) {
+                clearInterval(pollingIntervalId);
+                pollingIntervalId = null;
+            }
+        }
+
 
         // --- Initialization ---
         
         function initializeApp() {
-             // 1. Initial Render
-            if (!currentUserId) {
-                showLanding();
+             // 1. Initial Render: Try to load session first
+            if (loadSession()) {
+                // Session restored: Start the app directly
+                startApp(currentUser, authToken);
             } else {
-                startApp(currentUser, authToken); // This should technically not happen in a fresh load, but for safety
+                // No session: Show landing page
+                showLanding();
             }
             
             // 2. Setup File Upload listeners
